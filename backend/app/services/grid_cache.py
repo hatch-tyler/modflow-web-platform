@@ -27,7 +27,7 @@ GRID_CACHE_FILENAME = "cache/grid.bin"
 ARRAY_CACHE_PREFIX = "cache/arrays"
 
 # Arrays to cache during upload for instant viewing
-DEFAULT_ARRAYS_TO_CACHE = ["ibound", "top", "botm", "hk", "strt"]
+DEFAULT_ARRAYS_TO_CACHE = ["ibound", "top", "botm", "hk", "vka", "ss", "sy", "strt"]
 
 
 def get_grid_cache_path(project_id: str) -> str:

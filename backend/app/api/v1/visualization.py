@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models.base import get_db
 from app.models.project import Project
+from app.services.storage import get_storage_service
 from app.services.grid_cache import (
     get_cached_grid,
     grid_cache_exists,
@@ -26,6 +27,7 @@ from app.services.mesh import (
     generate_grid_mesh,
     get_array_data,
     load_and_extract_array,
+    load_and_list_arrays,
     load_model_from_storage,
 )
 from app.services.boundaries import (
@@ -300,12 +302,101 @@ async def get_array(
     )
 
 
+# Set of projects currently being backfilled (prevents duplicate work)
+_backfill_in_progress: set[str] = set()
+
+
+def _backfill_missing_arrays(
+    project_id: str, storage_path: str, missing_names: list[str]
+) -> None:
+    """
+    Cache missing viewer arrays in the background (fire-and-forget).
+
+    Downloads model once and extracts all missing arrays in a single
+    pass to avoid redundant multi-GB downloads.
+    """
+    if project_id in _backfill_in_progress:
+        return
+    _backfill_in_progress.add(project_id)
+    try:
+        import tempfile
+        from pathlib import Path
+        from app.services.mesh import (
+            _get_project_lock,
+            load_model_from_directory,
+            get_array_data,
+        )
+
+        lock = _get_project_lock(project_id)
+        with lock:
+            storage = get_storage_service()
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+
+                files = storage.list_objects(
+                    settings.minio_bucket_models,
+                    prefix=storage_path,
+                    recursive=True,
+                )
+                for obj_name in files:
+                    rel_path = obj_name[len(storage_path):].lstrip("/")
+                    if not rel_path:
+                        continue
+                    local_path = temp_path / rel_path
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    file_data = storage.download_file(
+                        settings.minio_bucket_models, obj_name
+                    )
+                    local_path.write_bytes(file_data)
+
+                model = load_model_from_directory(temp_path)
+                if model is None:
+                    logger.warning(
+                        f"Backfill: could not load model for {project_id}"
+                    )
+                    return
+
+                for name in missing_names:
+                    try:
+                        arr = get_array_data(model, name)
+                        if arr is not None:
+                            cache_array(project_id, name, arr)
+                            logger.info(
+                                f"Backfilled array cache '{name}' for "
+                                f"project {project_id} (shape: {arr.shape})"
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"Backfill: {name} not available for "
+                            f"{project_id}: {e}"
+                        )
+    except Exception as e:
+        logger.error(f"Backfill failed for project {project_id}: {e}")
+    finally:
+        _backfill_in_progress.discard(project_id)
+
+
 @router.get("/arrays")
 async def list_arrays(
     project_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """List available arrays for a project."""
+    """
+    List available property arrays for the 3D viewer dropdown.
+
+    Returns only material-property arrays suitable for cell colouring
+    (hk, vka, ss, sy).  Grid-geometry arrays (top, botm), the active-cell
+    mask (ibound) and initial conditions (strt) are still fetchable via
+    GET /arrays/{name} but are excluded from this listing because they
+    are either redundant with existing UI controls or don't make sense
+    as per-cell colour values.
+
+    Uses the MinIO array cache for instant response.  If any viewer
+    arrays are missing from the cache (e.g. project uploaded before
+    cache expansion), a background task backfills them so the next
+    request picks them up.
+    """
     import asyncio
 
     project = await get_project_or_404(project_id, db)
@@ -313,46 +404,66 @@ async def list_arrays(
     if not project.storage_path:
         return {"arrays": []}
 
-    # Load model to check which arrays are available - run in thread pool
-    try:
-        model = await asyncio.to_thread(
-            load_model_from_storage, str(project_id), project.storage_path
-        )
-    except (MemoryError, Exception) as e:
-        logger.error(f"Failed to load model for array listing: {e}")
-        return {"arrays": []}
-    if model is None:
-        return {"arrays": []}
+    project_id_str = str(project_id)
 
-    # Check which arrays exist
-    available = []
-    test_arrays = [
-        ("ibound", "Active cells (IBOUND/IDOMAIN)"),
-        ("top", "Top elevation"),
-        ("botm", "Bottom elevation"),
+    # Property arrays shown in the viewer dropdown, in display order.
+    viewer_arrays = [
         ("hk", "Horizontal hydraulic conductivity"),
         ("vka", "Vertical hydraulic conductivity"),
         ("ss", "Specific storage"),
         ("sy", "Specific yield"),
-        ("strt", "Starting heads"),
     ]
+    viewer_names = {name for name, _ in viewer_arrays}
+    descriptions = dict(viewer_arrays)
 
-    for name, description in test_arrays:
+    # Read from MinIO cache — populated at upload time, instant response
+    try:
+        cached_names = await asyncio.to_thread(list_cached_arrays, project_id_str)
+    except Exception:
+        cached_names = []
+
+    cached_set = set(cached_names)
+
+    available = []
+    for name, description in viewer_arrays:
+        if name not in cached_set:
+            continue
         try:
-            arr = get_array_data(model, name)
-            if arr is not None and hasattr(arr, 'shape'):
-                min_val = float(np.nanmin(arr))
-                max_val = float(np.nanmax(arr))
-                available.append({
-                    "name": name,
-                    "description": description,
-                    "shape": list(arr.shape),
-                    "min": min_val if np.isfinite(min_val) else 0,
-                    "max": max_val if np.isfinite(max_val) else 1,
-                })
+            cached_data = await asyncio.to_thread(
+                get_cached_array, project_id_str, name
+            )
+            if cached_data is None:
+                continue
+            # Parse binary: ndim(i4) + shape(ndim*i4) + float32 data
+            ndim = struct.unpack("<i", cached_data[:4])[0]
+            shape = list(struct.unpack(
+                f"<{ndim}i", cached_data[4:4 + ndim * 4]
+            ))
+            data_offset = 4 + ndim * 4
+            arr = np.frombuffer(cached_data[data_offset:], dtype=np.float32)
+            min_val = float(np.nanmin(arr))
+            max_val = float(np.nanmax(arr))
+            available.append({
+                "name": name,
+                "description": description,
+                "shape": shape,
+                "min": min_val if np.isfinite(min_val) else 0,
+                "max": max_val if np.isfinite(max_val) else 1,
+            })
         except Exception:
-            # Skip arrays that can't be loaded
             pass
+
+    # If any viewer arrays are not yet cached, backfill them in the
+    # background so the *next* request picks them up.  This handles
+    # projects uploaded before we expanded the default cache list.
+    missing = viewer_names - cached_set
+    if missing and project.storage_path:
+        import threading
+        threading.Thread(
+            target=_backfill_missing_arrays,
+            args=(project_id_str, project.storage_path, list(missing)),
+            daemon=True,
+        ).start()
 
     return {"arrays": available}
 

@@ -359,15 +359,14 @@ export default function ViewerPage() {
             onChange={(e) => setSelectedProperty(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
           >
-            {availableArrays?.map((arr) => (
-              <option key={arr.name} value={arr.name}>
-                {arr.description || arr.name}
-              </option>
-            )) || (
-              <>
-                <option value="ibound">IBOUND / IDOMAIN</option>
-                <option value="hk">Hydraulic Conductivity</option>
-              </>
+            {availableArrays && availableArrays.length > 0 ? (
+              availableArrays.map((arr) => (
+                <option key={arr.name} value={arr.name}>
+                  {arr.description || arr.name}
+                </option>
+              ))
+            ) : (
+              <option value="hk">Hydraulic Conductivity</option>
             )}
           </select>
           {arrayLoading && (

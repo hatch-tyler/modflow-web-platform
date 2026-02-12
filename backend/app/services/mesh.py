@@ -212,6 +212,70 @@ def load_and_extract_array(
             return get_array_data(model, array_name)
 
 
+def load_and_list_arrays(
+    project_id: str, storage_path: str, test_arrays: list[tuple[str, str]]
+) -> list[dict]:
+    """
+    Load model from MinIO and probe which arrays are available.
+
+    Keeps the temp directory alive so FloPy's lazy-loaded OPEN/CLOSE
+    external arrays can be read via get_data().
+
+    Args:
+        project_id: Project UUID as string.
+        storage_path: MinIO storage path for project model files.
+        test_arrays: List of (name, description) tuples to probe.
+
+    Returns:
+        List of dicts with name, description, shape, min, max for each
+        array that was successfully extracted.
+    """
+    lock = _get_project_lock(project_id)
+    with lock:
+        storage = get_storage_service()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+
+            files = storage.list_objects(
+                settings.minio_bucket_models,
+                prefix=storage_path,
+                recursive=True,
+            )
+
+            for obj_name in files:
+                rel_path = obj_name[len(storage_path):].lstrip("/")
+                if not rel_path:
+                    continue
+                local_path = temp_path / rel_path
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                file_data = storage.download_file(settings.minio_bucket_models, obj_name)
+                local_path.write_bytes(file_data)
+
+            model = load_model_from_directory(temp_path)
+            if model is None:
+                return []
+
+            available = []
+            for name, description in test_arrays:
+                try:
+                    arr = get_array_data(model, name)
+                    if arr is not None and hasattr(arr, 'shape'):
+                        min_val = float(np.nanmin(arr))
+                        max_val = float(np.nanmax(arr))
+                        available.append({
+                            "name": name,
+                            "description": description,
+                            "shape": list(arr.shape),
+                            "min": min_val if np.isfinite(min_val) else 0,
+                            "max": max_val if np.isfinite(max_val) else 1,
+                        })
+                except Exception:
+                    pass
+
+            return available
+
+
 def load_model_from_directory(model_dir: Path) -> Optional[object]:
     """Load a MODFLOW model from a directory."""
     # Normalize paths in model files (backslash → forward slash)
