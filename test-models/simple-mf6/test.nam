@@ -1,0 +1,10 @@
+BEGIN OPTIONS
+END OPTIONS
+
+BEGIN PACKAGES
+  DIS6 test.dis
+  IC6 test.ic
+  NPF6 test.npf
+  CHD6 test.chd
+  OC6 test.oc
+END PACKAGES

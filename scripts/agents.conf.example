@@ -1,0 +1,41 @@
+# PEST++ Agent Deployment Configuration
+# ======================================
+#
+# This file defines the remote machines where PEST++ agents will be deployed.
+#
+# Format: hostname_or_ip [username] [num_agents]
+#
+# - hostname_or_ip: IP address or hostname of the machine
+# - username: SSH username (defaults to current user if not specified)
+# - num_agents: Number of agent containers to run (defaults to 4)
+#
+# Prerequisites:
+# - SSH key-based authentication must be set up (ssh-copy-id user@host)
+# - Docker must be installed on all target machines
+# - Target machines must be able to reach the main server on ports 4004 and 9000
+#
+# Tips for num_agents:
+# - Use (CPU cores - 1) as a good starting point
+# - For machines also doing other work, use fewer agents
+# - WSL2 on Windows has some overhead, so use slightly fewer agents
+#
+# Lines starting with # are comments
+
+# === Linux Machines ===
+# 192.168.1.101 ubuntu 4          # 4-core machine
+# 192.168.1.102 ubuntu 6          # 8-core machine
+# 192.168.1.103 ubuntu 8          # 12-core workstation
+
+# === Windows Machines (WSL2) ===
+# 192.168.1.104 wsluser 3         # WSL2 has some overhead
+# 192.168.1.105 wsluser 3
+
+# === Using Hostnames ===
+# linux-pc-1.local user 4
+# linux-pc-2.local user 4
+# windows-pc.local user 3
+
+# === Example Setup (uncomment and modify) ===
+# 192.168.1.101 user 4
+# 192.168.1.102 user 4
+# 192.168.1.103 user 4

@@ -1,0 +1,152 @@
+# =============================================================================
+# PEST++ Local Agent Containers
+# =============================================================================
+# This file runs containerized PEST++ agents on the main server.
+# These agents connect to the PEST++ manager running in the worker container.
+#
+# Architecture:
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │                     Main Server                              │
+#   │                                                              │
+#   │  ┌──────────────────────────────────────────────────────┐   │
+#   │  │ modflow-worker (from docker-compose.yml)             │   │
+#   │  │   └── PEST++ Manager (listening on :4004)            │   │
+#   │  └──────────────────────────────────────────────────────┘   │
+#   │           ▲                              ▲                   │
+#   │           │ Docker network               │ Host port 4004    │
+#   │           │                              │                   │
+#   │  ┌────────┴─────────┐           Remote agents from          │
+#   │  │ pest-local-agent │           other machines              │
+#   │  │ (this file)      │                                       │
+#   │  │ × N replicas     │                                       │
+#   │  └──────────────────┘                                       │
+#   └─────────────────────────────────────────────────────────────┘
+#
+# Usage:
+#   # Start 8 local agents
+#   docker compose -f docker-compose.pest.yml up -d --scale pest-local-agent=8
+#
+#   # Check status
+#   docker compose -f docker-compose.pest.yml ps
+#
+#   # Stop agents
+#   docker compose -f docker-compose.pest.yml down
+#
+# Resource Guidelines (per machine):
+#   - Intel i7-14700 (20 cores, 32GB RAM): 14-16 agents
+#   - Intel i7-12700 (12 cores, 32GB RAM): 10-12 agents
+#   - 8-core machine with 16GB RAM: 6-8 agents
+#
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Local PEST++ Agent
+  # ---------------------------------------------------------------------------
+  # These agents run on the same machine as the manager and connect via
+  # Docker network. They share a volume with the worker container.
+  # ---------------------------------------------------------------------------
+  pest-local-agent:
+    image: modflow-pest-agent:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pest-agent
+    container_name: pest-local-agent
+    # Connect to manager via Docker network (worker container)
+    # The manager runs inside modflow-worker on the modflow-network
+    command: >
+      sh -c "
+        echo 'Waiting for PEST++ manager...'
+        while ! nc -z modflow-worker 4004 2>/dev/null; do
+          sleep 2
+        done
+        echo 'Manager available, starting agent...'
+        cd /work
+
+        # Find PST file
+        PST_FILE=$$(find /work -name '*.pst' -type f | head -1)
+        if [ -z \"$$PST_FILE\" ]; then
+          echo 'No PST file found, waiting for workspace sync...'
+          while [ -z \"$$PST_FILE\" ]; do
+            sleep 5
+            PST_FILE=$$(find /work -name '*.pst' -type f | head -1)
+          done
+        fi
+
+        echo \"Found PST file: $$PST_FILE\"
+        cd $$(dirname $$PST_FILE)
+
+        # Run as PEST++ agent connecting to manager
+        exec pestpp-glm $$(basename $$PST_FILE) /h modflow-worker:4004
+      "
+    volumes:
+      # Share workspace with worker container
+      - pest-workspace:/work
+    networks:
+      - modflow-network
+    restart: on-failure:3
+    deploy:
+      # Default replicas - override with --scale
+      replicas: ${LOCAL_AGENTS:-4}
+      resources:
+        limits:
+          # Memory limit per agent - adjust based on model size
+          memory: ${AGENT_MEMORY_LIMIT:-2G}
+          # CPU limit per agent
+          cpus: '${AGENT_CPU_LIMIT:-1.0}'
+        reservations:
+          memory: ${AGENT_MEMORY_RESERVATION:-512M}
+          cpus: '${AGENT_CPU_RESERVATION:-0.5}'
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "pestpp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      - workspace-init
+
+  # ---------------------------------------------------------------------------
+  # Workspace Initializer
+  # ---------------------------------------------------------------------------
+  # This service ensures the shared workspace volume is ready before agents start.
+  # It exits after initialization.
+  # ---------------------------------------------------------------------------
+  workspace-init:
+    image: modflow-pest-agent:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.pest-agent
+    command: >
+      sh -c "
+        echo 'Initializing workspace volume...'
+        mkdir -p /work
+        chmod 777 /work
+        echo 'Workspace ready'
+      "
+    volumes:
+      - pest-workspace:/work
+    networks:
+      - modflow-network
+    restart: "no"
+
+# =============================================================================
+# Networks
+# =============================================================================
+# Connect to the existing modflow-network from docker-compose.yml
+# This allows agents to reach the manager in modflow-worker
+# =============================================================================
+networks:
+  modflow-network:
+    external: true
+    name: model-app_modflow-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+# Shared workspace for PEST++ files
+# The worker container writes model files here, agents read them
+# =============================================================================
+volumes:
+  pest-workspace:
+    name: pest-workspace

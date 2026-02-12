@@ -1,0 +1,79 @@
+# Lightweight PEST++ Agent Container
+# This container runs PEST++ agents that connect to a remote manager
+# Deploy on helper machines to distribute calibration workload
+
+FROM python:3.11-slim-bookworm
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    unzip \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MODFLOW 6 executables
+RUN mkdir -p /usr/local/bin && \
+    wget -q https://github.com/MODFLOW-USGS/executables/releases/download/14.0/linux.zip -O /tmp/mf6.zip && \
+    unzip -q /tmp/mf6.zip -d /tmp/mf6 && \
+    cp /tmp/mf6/mf6 /usr/local/bin/ && \
+    cp /tmp/mf6/mf2005 /usr/local/bin/ && \
+    cp /tmp/mf6/mfnwt /usr/local/bin/ && \
+    cp /tmp/mf6/mfusgdbl /usr/local/bin/mfusg 2>/dev/null || true && \
+    chmod +x /usr/local/bin/mf* && \
+    rm -rf /tmp/mf6 /tmp/mf6.zip
+
+# Install PEST++ executables
+RUN wget -q https://github.com/usgs/pestpp/releases/download/5.2.14/pestpp-5.2.14-linux.tar.gz -O /tmp/pestpp.tar.gz && \
+    tar -xzf /tmp/pestpp.tar.gz -C /tmp && \
+    cp /tmp/pestpp-5.2.14-linux/bin/* /usr/local/bin/ 2>/dev/null || \
+    cp /tmp/pestpp-*/bin/* /usr/local/bin/ 2>/dev/null || \
+    find /tmp -name "pestpp-*" -type f -executable -exec cp {} /usr/local/bin/ \; && \
+    chmod +x /usr/local/bin/pestpp* 2>/dev/null || true && \
+    rm -rf /tmp/pestpp*
+
+# Install MinIO client for model file sync
+RUN wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc && \
+    chmod +x /usr/local/bin/mc
+
+# Install Python dependencies for forward_run.py
+RUN pip install --no-cache-dir \
+    numpy \
+    flopy \
+    pyemu
+
+# Create work directory
+WORKDIR /work
+
+# Create non-root user
+RUN groupadd --gid 1000 agent && \
+    useradd --uid 1000 --gid agent --shell /bin/bash --create-home agent && \
+    chown -R agent:agent /work
+
+# Copy agent entrypoint script
+COPY scripts/pest-agent-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Switch to non-root user
+USER agent
+
+# Environment variables for configuration
+ENV MANAGER_HOST=localhost \
+    MANAGER_PORT=4004 \
+    MINIO_HOST=localhost \
+    MINIO_PORT=9000 \
+    MINIO_ACCESS_KEY=minioadmin \
+    MINIO_SECRET_KEY=minioadmin \
+    PROJECT_ID="" \
+    RUN_ID=""
+
+# Health check - verify we can reach the manager
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD nc -z $MANAGER_HOST $MANAGER_PORT || exit 1
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

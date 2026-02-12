@@ -1,0 +1,9 @@
+LIST 6 test.lst
+DIS 10 test.dis
+BAS6 11 test.bas
+LPF 12 test.lpf
+WEL 13 test.wel
+PCG 14 test.pcg
+OC 15 test.oc
+DATA(BINARY) 50 test.hds
+DATA(BINARY) 51 test.cbc

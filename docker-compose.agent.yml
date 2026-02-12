@@ -1,0 +1,49 @@
+# Docker Compose for PEST++ Remote Agents
+# Deploy this on helper machines to distribute calibration workload
+#
+# Usage:
+#   1. Copy this file and Dockerfile.pest-agent to the helper machine
+#   2. Build the image: docker compose -f docker-compose.agent.yml build
+#   3. Configure environment variables (see below)
+#   4. Start agents: docker compose -f docker-compose.agent.yml up -d --scale pest-agent=4
+#
+# Environment variables (set in .env or export before running):
+#   MANAGER_HOST - IP address of the main server running PEST++ manager
+#   MANAGER_PORT - Port for PEST++ manager (default: 4004)
+#   MINIO_HOST   - IP address for MinIO (usually same as MANAGER_HOST)
+#   NUM_AGENTS   - Number of agents to run (default: 4)
+
+services:
+  pest-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.pest-agent
+    image: modflow-pest-agent:latest
+    restart: on-failure:5
+    environment:
+      - MANAGER_HOST=${MANAGER_HOST:-192.168.1.100}
+      - MANAGER_PORT=${MANAGER_PORT:-4004}
+      - MINIO_HOST=${MINIO_HOST:-${MANAGER_HOST:-192.168.1.100}}
+      - MINIO_PORT=${MINIO_PORT:-9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - PROJECT_ID=${PROJECT_ID:-}
+      - RUN_ID=${RUN_ID:-}
+    volumes:
+      - agent-work:/work
+    deploy:
+      replicas: ${NUM_AGENTS:-4}
+      resources:
+        limits:
+          # Each agent needs enough memory for MODFLOW model
+          # For i7-14700 (32GB RAM): 14-16 agents × 2GB = 28-32GB
+          memory: ${AGENT_MEMORY_LIMIT:-2G}
+          cpus: '${AGENT_CPU_LIMIT:-1.0}'
+        reservations:
+          memory: ${AGENT_MEMORY_RESERVATION:-512M}
+          cpus: '${AGENT_CPU_RESERVATION:-0.5}'
+    # Note: No network_mode needed - agents connect out to manager
+
+volumes:
+  agent-work:
+    # Temporary storage for model files during calibration

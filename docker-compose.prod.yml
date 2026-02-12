@@ -1,0 +1,43 @@
+# Production overrides for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This file:
+# - Disables debug mode
+# - Removes exposed dev ports (postgres, redis, minio)
+# - Uses stronger default passwords (override via .env in production)
+
+services:
+  api:
+    environment:
+      - DEBUG=false
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+
+  worker:
+    environment:
+      - DEBUG=false
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+
+  postgres:
+    ports: []  # Remove exposed dev port
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+
+  redis:
+    ports: []  # Remove exposed dev port
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+
+  minio:
+    ports:
+      - "9000:9000"  # API port still needed for nginx proxy
+      # Console port (9001) removed in production
+    environment:
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env}
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"

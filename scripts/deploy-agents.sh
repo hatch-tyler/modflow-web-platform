@@ -1,0 +1,409 @@
+#!/bin/bash
+# =============================================================================
+# PEST++ Agent Deployment Script
+# =============================================================================
+# This script deploys PEST++ agents to remote machines on your local network.
+# It handles:
+#   1. Copying necessary files via SCP
+#   2. Building the Docker image on remote machines
+#   3. Starting the specified number of agent containers
+#
+# Prerequisites:
+#   - SSH key-based authentication set up to target machines
+#   - Docker installed on all target machines
+#   - Target machines can reach the main server on ports 4004 and 9000
+#
+# Usage:
+#   ./deploy-agents.sh [options]
+#
+# Options:
+#   -c, --config FILE    Config file with machine list (default: agents.conf)
+#   -m, --manager IP     Manager/main server IP address
+#   -n, --num-agents N   Default number of agents per machine (default: 4)
+#   -b, --build          Force rebuild of Docker image
+#   -s, --stop           Stop agents on all machines instead of starting
+#   -h, --help           Show this help message
+# =============================================================================
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Default values
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+CONFIG_FILE="${SCRIPT_DIR}/agents.conf"
+MANAGER_IP=""
+DEFAULT_NUM_AGENTS=4
+FORCE_BUILD=false
+STOP_MODE=false
+REMOTE_DIR="/tmp/pest-agents"
+
+# Files to deploy
+DEPLOY_FILES=(
+    "Dockerfile.pest-agent"
+    "docker-compose.agent.yml"
+    ".env.agent.example"
+    "scripts/pest-agent-entrypoint.sh"
+    "scripts/start-agents.sh"
+)
+
+# =============================================================================
+# Functions
+# =============================================================================
+
+print_header() {
+    echo -e "${BLUE}"
+    echo "=============================================="
+    echo "  PEST++ Agent Deployment Script"
+    echo "=============================================="
+    echo -e "${NC}"
+}
+
+print_usage() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  -c, --config FILE    Config file with machine list (default: agents.conf)"
+    echo "  -m, --manager IP     Manager/main server IP address (required)"
+    echo "  -n, --num-agents N   Default number of agents per machine (default: 4)"
+    echo "  -b, --build          Force rebuild of Docker image"
+    echo "  -s, --stop           Stop agents on all machines"
+    echo "  -h, --help           Show this help message"
+    echo ""
+    echo "Config file format (agents.conf):"
+    echo "  # Comments start with #"
+    echo "  # Format: hostname_or_ip [username] [num_agents]"
+    echo "  192.168.1.101 user 4"
+    echo "  192.168.1.102 user 6"
+    echo "  linux-pc.local admin 4"
+}
+
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[OK]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+check_ssh() {
+    local host=$1
+    local user=$2
+
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 "${user}@${host}" "echo ok" &>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+deploy_to_machine() {
+    local host=$1
+    local user=$2
+    local num_agents=$3
+
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    log_info "Deploying to ${user}@${host} (${num_agents} agents)"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Check SSH connectivity
+    log_info "Checking SSH connectivity..."
+    if ! check_ssh "$host" "$user"; then
+        log_error "Cannot connect to ${user}@${host}"
+        log_error "Make sure SSH key authentication is set up"
+        return 1
+    fi
+    log_success "SSH connection OK"
+
+    # Check Docker on remote
+    log_info "Checking Docker on remote machine..."
+    if ! ssh "${user}@${host}" "docker --version" &>/dev/null; then
+        log_error "Docker not found on ${host}"
+        return 1
+    fi
+    log_success "Docker available"
+
+    # Create remote directory
+    log_info "Creating remote directory..."
+    ssh "${user}@${host}" "mkdir -p ${REMOTE_DIR}/scripts"
+
+    # Copy files
+    log_info "Copying deployment files..."
+    for file in "${DEPLOY_FILES[@]}"; do
+        local src="${PROJECT_DIR}/${file}"
+        local dest="${REMOTE_DIR}/${file}"
+
+        if [[ -f "$src" ]]; then
+            scp -q "$src" "${user}@${host}:${dest}"
+            log_success "  Copied ${file}"
+        else
+            log_warn "  File not found: ${file}"
+        fi
+    done
+
+    # Create .env file
+    log_info "Creating .env configuration..."
+    ssh "${user}@${host}" "cat > ${REMOTE_DIR}/.env << 'EOF'
+# PEST++ Agent Configuration
+# Auto-generated by deploy-agents.sh
+
+MANAGER_HOST=${MANAGER_IP}
+MANAGER_PORT=4004
+MINIO_HOST=${MANAGER_IP}
+MINIO_PORT=9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+NUM_AGENTS=${num_agents}
+EOF"
+    log_success ".env created"
+
+    # Make scripts executable
+    ssh "${user}@${host}" "chmod +x ${REMOTE_DIR}/scripts/*.sh 2>/dev/null || true"
+
+    # Build Docker image
+    if [[ "$FORCE_BUILD" == "true" ]] || ! ssh "${user}@${host}" "docker images | grep -q modflow-pest-agent"; then
+        log_info "Building Docker image (this may take a few minutes)..."
+        ssh "${user}@${host}" "cd ${REMOTE_DIR} && docker build -f Dockerfile.pest-agent -t modflow-pest-agent:latest . 2>&1" | while read line; do
+            echo "    $line"
+        done
+        log_success "Docker image built"
+    else
+        log_info "Docker image already exists (use -b to force rebuild)"
+    fi
+
+    # Stop existing agents
+    log_info "Stopping any existing agents..."
+    ssh "${user}@${host}" "docker ps -q --filter 'name=pest-agent-' | xargs -r docker stop 2>/dev/null || true"
+    ssh "${user}@${host}" "docker ps -aq --filter 'name=pest-agent-' | xargs -r docker rm 2>/dev/null || true"
+
+    if [[ "$STOP_MODE" == "true" ]]; then
+        log_success "Agents stopped on ${host}"
+        return 0
+    fi
+
+    # Start agents
+    log_info "Starting ${num_agents} agents..."
+    ssh "${user}@${host}" "cd ${REMOTE_DIR} && docker compose -f docker-compose.agent.yml up -d --scale pest-agent=${num_agents} 2>&1" | while read line; do
+        echo "    $line"
+    done
+
+    # Verify agents are running
+    sleep 2
+    local running=$(ssh "${user}@${host}" "docker ps --filter 'name=pest-agent' --format '{{.Names}}' | wc -l")
+
+    if [[ "$running" -gt 0 ]]; then
+        log_success "${running} agent(s) running on ${host}"
+    else
+        log_warn "No agents appear to be running on ${host}"
+    fi
+
+    return 0
+}
+
+stop_all_agents() {
+    log_info "Stopping agents on all machines..."
+    STOP_MODE=true
+
+    while IFS=' ' read -r host user num_agents || [[ -n "$host" ]]; do
+        # Skip comments and empty lines
+        [[ "$host" =~ ^#.*$ ]] && continue
+        [[ -z "$host" ]] && continue
+
+        # Default values
+        user=${user:-$USER}
+
+        deploy_to_machine "$host" "$user" "0"
+    done < "$CONFIG_FILE"
+}
+
+# =============================================================================
+# Parse Arguments
+# =============================================================================
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        -m|--manager)
+            MANAGER_IP="$2"
+            shift 2
+            ;;
+        -n|--num-agents)
+            DEFAULT_NUM_AGENTS="$2"
+            shift 2
+            ;;
+        -b|--build)
+            FORCE_BUILD=true
+            shift
+            ;;
+        -s|--stop)
+            STOP_MODE=true
+            shift
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+# =============================================================================
+# Main
+# =============================================================================
+
+print_header
+
+# Check for config file
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    log_warn "Config file not found: ${CONFIG_FILE}"
+    log_info "Creating example config file..."
+
+    cat > "$CONFIG_FILE" << 'EOF'
+# PEST++ Agent Deployment Configuration
+# ======================================
+# Format: hostname_or_ip [username] [num_agents]
+#
+# Examples:
+#   192.168.1.101 user 4      # 4 agents on this machine
+#   192.168.1.102 admin 6     # 6 agents (more CPU cores)
+#   linux-pc.local user 4     # Using hostname
+#   windows-pc user 3         # WSL2 machine
+#
+# Notes:
+#   - Username defaults to current user if not specified
+#   - Num agents defaults to value from -n flag (or 4)
+#   - Lines starting with # are comments
+#   - SSH key authentication must be set up
+
+# === Add your machines below ===
+# 192.168.1.101 user 4
+# 192.168.1.102 user 4
+EOF
+
+    log_info "Edit ${CONFIG_FILE} and add your machines"
+    exit 1
+fi
+
+# Check for manager IP
+if [[ -z "$MANAGER_IP" ]]; then
+    # Try to detect local IP
+    MANAGER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ip route get 1 2>/dev/null | awk '{print $7}' || echo "")
+
+    if [[ -z "$MANAGER_IP" ]]; then
+        log_error "Manager IP not specified and could not be auto-detected"
+        log_info "Use -m or --manager to specify the main server IP"
+        exit 1
+    fi
+
+    log_warn "Manager IP auto-detected as: ${MANAGER_IP}"
+    read -p "Is this correct? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Please specify the manager IP with -m flag"
+        exit 1
+    fi
+fi
+
+log_info "Manager IP: ${MANAGER_IP}"
+log_info "Config file: ${CONFIG_FILE}"
+log_info "Default agents per machine: ${DEFAULT_NUM_AGENTS}"
+echo ""
+
+# Count machines
+MACHINE_COUNT=0
+TOTAL_AGENTS=0
+
+while IFS=' ' read -r host user num_agents || [[ -n "$host" ]]; do
+    [[ "$host" =~ ^#.*$ ]] && continue
+    [[ -z "$host" ]] && continue
+
+    num_agents=${num_agents:-$DEFAULT_NUM_AGENTS}
+    MACHINE_COUNT=$((MACHINE_COUNT + 1))
+    TOTAL_AGENTS=$((TOTAL_AGENTS + num_agents))
+done < "$CONFIG_FILE"
+
+if [[ "$MACHINE_COUNT" -eq 0 ]]; then
+    log_error "No machines found in config file"
+    log_info "Edit ${CONFIG_FILE} and add your machines"
+    exit 1
+fi
+
+log_info "Found ${MACHINE_COUNT} machine(s) in config"
+log_info "Total agents to deploy: ${TOTAL_AGENTS}"
+echo ""
+
+if [[ "$STOP_MODE" == "true" ]]; then
+    read -p "Stop agents on all ${MACHINE_COUNT} machine(s)? (y/n) " -n 1 -r
+else
+    read -p "Deploy to all ${MACHINE_COUNT} machine(s)? (y/n) " -n 1 -r
+fi
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    log_info "Aborted"
+    exit 0
+fi
+
+# Deploy to each machine
+SUCCESS_COUNT=0
+FAIL_COUNT=0
+
+while IFS=' ' read -r host user num_agents || [[ -n "$host" ]]; do
+    # Skip comments and empty lines
+    [[ "$host" =~ ^#.*$ ]] && continue
+    [[ -z "$host" ]] && continue
+
+    # Default values
+    user=${user:-$USER}
+    num_agents=${num_agents:-$DEFAULT_NUM_AGENTS}
+
+    if deploy_to_machine "$host" "$user" "$num_agents"; then
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+    else
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+done < "$CONFIG_FILE"
+
+# Summary
+echo ""
+echo -e "${BLUE}=============================================="
+echo "  Deployment Summary"
+echo "==============================================${NC}"
+echo ""
+log_info "Successful: ${SUCCESS_COUNT}"
+if [[ "$FAIL_COUNT" -gt 0 ]]; then
+    log_error "Failed: ${FAIL_COUNT}"
+fi
+echo ""
+
+if [[ "$STOP_MODE" != "true" ]]; then
+    log_info "To verify agents are running:"
+    echo "    ssh user@host 'docker ps --filter name=pest-agent'"
+    echo ""
+    log_info "To view agent logs:"
+    echo "    ssh user@host 'docker logs -f pest-agent-1'"
+    echo ""
+    log_info "To stop all agents:"
+    echo "    $0 -m ${MANAGER_IP} -s"
+fi
