@@ -24,20 +24,17 @@ from sqlalchemy import select
 settings = get_settings()
 
 
-@celery_app.task(bind=True, name="app.tasks.live_results.process_live_results")
-def process_live_results(
-    self,
+def _run_live_processing(
     run_id: str,
     project_id: str,
     model_dir: str,
     model_type: str,
 ) -> dict:
     """
-    Monitor HDS file during simulation and process timesteps as they complete.
+    Core live result processing loop.
 
-    This task runs in parallel with the simulation, periodically checking for
-    new timesteps in the HDS file. When new timesteps are found, they are
-    extracted and cached in Redis for immediate access.
+    Monitors HDS/CBC files during simulation and caches timesteps in Redis.
+    Used by both the Celery task and the thread-based entry point.
 
     Args:
         run_id: UUID of the run record
@@ -385,11 +382,49 @@ def process_live_results(
     }
 
 
+@celery_app.task(bind=True, name="app.tasks.live_results.process_live_results")
+def process_live_results(
+    self,
+    run_id: str,
+    project_id: str,
+    model_dir: str,
+    model_type: str,
+) -> dict:
+    """
+    Monitor HDS file during simulation and process timesteps as they complete.
+
+    This Celery task wrapper is retained for backwards compatibility but is no
+    longer called from simulate.py (concurrency=1 makes it a no-op). The
+    simulation task now uses live_results_thread_fn() instead.
+    """
+    return _run_live_processing(run_id, project_id, model_dir, model_type)
+
+
+def live_results_thread_fn(
+    run_id: str,
+    project_id: str,
+    model_dir: str,
+    model_type: str,
+) -> dict:
+    """
+    Run live result processing as a thread (not a Celery task).
+
+    Called from within the simulation task as a daemon thread.
+    The thread shares the simulation's temp directory so it can read
+    HDS/CBC files while MODFLOW writes them.
+    """
+    try:
+        return _run_live_processing(run_id, project_id, model_dir, model_type)
+    except Exception:
+        logger.exception("[Live Results] Thread crashed")
+        return {"error": "live results thread crashed", "timesteps_processed": 0}
+
+
 def start_live_processing(run_id: str, project_id: str, model_dir: str, model_type: str):
     """
-    Start live result processing as a background task.
+    Start live result processing as a background Celery task.
 
-    Called from the simulation task after model files are downloaded but
-    before the simulation starts.
+    Retained for backwards compatibility. The simulation task now uses
+    live_results_thread_fn() via threading.Thread instead.
     """
     return process_live_results.delay(run_id, project_id, model_dir, model_type)

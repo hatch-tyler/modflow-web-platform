@@ -1,0 +1,97 @@
+{
+  "package_name": "RCH",
+  "description": "Recharge Package - Simulates distributed areal recharge to the groundwater system",
+  "file_extensions": [".rch", ".rcha"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/rch.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Recharge option and output unit",
+      "variables": [
+        {
+          "name": "NRCHOP",
+          "position": 0,
+          "type": "integer",
+          "description": "Recharge option code. 1=recharge to top layer only, 2=recharge to vertical column defined by IRCH, 3=recharge to highest active cell in each column.",
+          "tooltip": "1=recharge always applied to layer 1. 2=recharge applied to layer specified by IRCH array. 3=recharge applied to highest active cell (most common for multi-layer models)."
+        },
+        {
+          "name": "IRCHCB",
+          "position": 1,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell recharge flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, recharge flow terms saved to binary file for post-processing. If 0, no cell-by-cell output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period recharge flags",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "INRECH",
+          "position": 0,
+          "type": "integer",
+          "description": "Flag for reading recharge array. >=0=read new RECH array, <0=reuse previous RECH.",
+          "tooltip": "If >= 0, a new recharge array is read. If < 0, the recharge array from the previous stress period is reused."
+        },
+        {
+          "name": "INIRCH",
+          "position": 1,
+          "type": "integer",
+          "description": "Flag for reading recharge layer indicator. >=0=read new IRCH, <0=reuse previous IRCH. Only if NRCHOP=2.",
+          "tooltip": "If >= 0, a new IRCH layer indicator array is read. If < 0, reuse the previous array. Only read when NRCHOP=2."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "Recharge flux array",
+      "condition": "INRECH >= 0",
+      "variables": [
+        {
+          "name": "RECH",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Recharge flux rate (L/T) applied to each vertical column.",
+          "tooltip": "2D array of recharge flux (length/time). Applied as a volumetric rate = RECH * DELR * DELC. Positive values add water to the model."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Recharge layer indicator array",
+      "condition": "NRCHOP == 2 and INIRCH >= 0",
+      "variables": [
+        {
+          "name": "IRCH",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Layer number to which recharge is applied for each vertical column (1-based).",
+          "tooltip": "2D array specifying which layer receives recharge at each column location. Only read when NRCHOP=2."
+        }
+      ]
+    }
+  ]
+}

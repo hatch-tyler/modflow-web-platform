@@ -1,0 +1,77 @@
+{
+  "package_name": "STO",
+  "description": "Storage",
+  "file_extensions": [".sto"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Storage options controlling how storage properties are interpreted.",
+      "variables": [
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save cell-by-cell storage flow terms to the budget file.",
+          "tooltip": "When specified, storage flow terms (SS and SY contributions) are written to the cell-by-cell budget file defined in the Output Control package."
+        },
+        {
+          "name": "STORAGECOEFFICIENT",
+          "type": "keyword",
+          "description": "Keyword indicating that SS values are read as storage coefficient (dimensionless) rather than specific storage (1/length).",
+          "tooltip": "When specified, the SS array is interpreted as storage coefficient (S = Ss * thickness), which is dimensionless. By default, SS is specific storage with units of 1/length."
+        },
+        {
+          "name": "SS_CONFINED_ONLY",
+          "type": "keyword",
+          "description": "Keyword indicating that compressible storage is only active for confined cells.",
+          "tooltip": "When specified, specific storage contributions are only calculated for cells that are fully saturated (confined). This avoids double-counting storage changes in unconfined cells where specific yield already accounts for storage."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Storage property arrays for each cell.",
+      "variables": [
+        {
+          "name": "ICONVERT",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Integer flag indicating whether a cell is convertible (nonzero) or confined (0) for storage calculations.",
+          "tooltip": "Nonzero values indicate convertible cells that use specific yield (SY) when the water table is within the cell and specific storage (SS) when fully saturated. 0 indicates confined cells that always use SS."
+        },
+        {
+          "name": "SS",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Specific storage (or storage coefficient if STORAGECOEFFICIENT is specified) for each cell.",
+          "tooltip": "Specific storage has units of 1/length and represents the volume of water released per unit volume per unit decline in head. Typical values range from 1e-6 to 1e-4 for confined aquifers."
+        },
+        {
+          "name": "SY",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Specific yield (dimensionless) for each convertible cell.",
+          "tooltip": "Represents the volume of water released per unit area per unit decline in the water table. Only used for convertible cells (ICONVERT nonzero). Typical values range from 0.01 to 0.30."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period storage type designation (steady-state or transient).",
+      "variables": [
+        {
+          "name": "STEADY-STATE",
+          "type": "keyword",
+          "description": "Keyword indicating the stress period is simulated as steady-state (no storage changes).",
+          "tooltip": "No storage terms are included in the flow equations for this stress period. Head distribution represents equilibrium conditions. Commonly used for the first stress period to establish initial conditions."
+        },
+        {
+          "name": "TRANSIENT",
+          "type": "keyword",
+          "description": "Keyword indicating the stress period is simulated as transient (storage changes are computed).",
+          "tooltip": "Storage terms (SS and SY) are included in the flow equations. Head changes over time as the aquifer responds to stresses. Requires appropriate time step discretization in TDIS."
+        }
+      ]
+    }
+  ]
+}

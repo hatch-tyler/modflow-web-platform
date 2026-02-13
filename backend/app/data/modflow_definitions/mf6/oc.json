@@ -1,0 +1,62 @@
+{
+  "package_name": "OC",
+  "description": "Output Control",
+  "file_extensions": [".oc"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options specifying output file names for binary head and budget data.",
+      "variables": [
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary cell-by-cell budget output file.",
+          "tooltip": "Specifies the file name for writing binary budget data. Common extensions are .cbc, .bud, or .cbb. This file contains flow terms for each cell and is used for post-processing water budgets."
+        },
+        {
+          "name": "HEAD FILEOUT",
+          "type": "string",
+          "description": "Name of the binary head output file.",
+          "tooltip": "Specifies the file name for writing binary head data. Common extension is .hds. This file contains computed head values for each cell and is used for visualizing head distributions."
+        },
+        {
+          "name": "BUDGETCSV FILEOUT",
+          "type": "string",
+          "description": "Name of the CSV file for writing volumetric budget summaries.",
+          "tooltip": "Specifies a comma-separated values file for writing the overall model water budget summary. Useful for quickly reviewing inflows, outflows, and percent discrepancy."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period output control instructions specifying when to save or print head and budget data.",
+      "variables": [
+        {
+          "name": "SAVE HEAD",
+          "type": "keyword",
+          "description": "Keyword to save head values to the binary head file for all time steps in this stress period.",
+          "tooltip": "Writes computed head values to the binary head file. Can be modified with ALL, FIRST, LAST, or FREQUENCY keywords. LAST saves only the final time step of the stress period."
+        },
+        {
+          "name": "SAVE BUDGET",
+          "type": "keyword",
+          "description": "Keyword to save cell-by-cell budget terms to the binary budget file for all time steps in this stress period.",
+          "tooltip": "Writes cell-by-cell flow terms to the binary budget file. Can be modified with ALL, FIRST, LAST, or FREQUENCY keywords. Required for post-processing water budgets and flow visualization."
+        },
+        {
+          "name": "PRINT HEAD",
+          "type": "keyword",
+          "description": "Keyword to print head values to the listing file.",
+          "tooltip": "Writes formatted head values to the listing file for review. Can be modified with ALL, FIRST, LAST, or FREQUENCY keywords. Useful for debugging but can produce large listing files."
+        },
+        {
+          "name": "PRINT BUDGET",
+          "type": "keyword",
+          "description": "Keyword to print the volumetric budget summary to the listing file.",
+          "tooltip": "Writes the overall water budget summary (inflows, outflows, percent discrepancy) to the listing file. Helpful for verifying model mass balance."
+        }
+      ]
+    }
+  ]
+}

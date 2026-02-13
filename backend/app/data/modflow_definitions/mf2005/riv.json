@@ -1,0 +1,123 @@
+{
+  "package_name": "RIV",
+  "description": "River Package - Simulates the effects of flow between surface-water features and groundwater systems",
+  "file_extensions": [".riv"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/riv.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Maximum number of river cells and output unit",
+      "variables": [
+        {
+          "name": "Option",
+          "position": 0,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keyword 'AUXILIARY' followed by auxiliary variable names, and/or 'NOPRINT'.",
+          "tooltip": "AUXILIARY adds extra data columns. NOPRINT suppresses river list output to listing file."
+        },
+        {
+          "name": "MXACTR",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of river cells active during any stress period.",
+          "tooltip": "Maximum number of river entries used simultaneously across all stress periods."
+        },
+        {
+          "name": "IRIVCB",
+          "position": 2,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, river flow terms saved to binary file. If 0, no cell-by-cell output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period data header",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "ITMP",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of river entries for this stress period. <0 reuses previous period data.",
+          "tooltip": "If > 0, ITMP river entries follow. If 0, no rivers active. If < 0, reuse previous stress period data."
+        },
+        {
+          "name": "NP",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of parameters active in this stress period.",
+          "tooltip": "Number of named parameters active during this stress period. Typically 0 if not using parameters."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "River data entries",
+      "repeat": "ITMP (per stress period)",
+      "variables": [
+        {
+          "name": "Layer",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number of the river cell (1-based).",
+          "tooltip": "Layer containing the river reach. 1-based index."
+        },
+        {
+          "name": "Row",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number of the river cell (1-based).",
+          "tooltip": "Row location of the river reach. 1-based index."
+        },
+        {
+          "name": "Column",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number of the river cell (1-based).",
+          "tooltip": "Column location of the river reach. 1-based index."
+        },
+        {
+          "name": "Stage",
+          "position": 3,
+          "type": "float",
+          "description": "Head in the river (river stage) in model length units.",
+          "tooltip": "Water surface elevation in the river. Flow direction depends on the difference between Stage and the head in the cell."
+        },
+        {
+          "name": "Conductance",
+          "position": 4,
+          "type": "float",
+          "description": "Hydraulic conductance of the riverbed (L^2/T).",
+          "tooltip": "Riverbed conductance = K_bed * Length * Width / Thickness_bed. Controls the rate of exchange between the river and aquifer."
+        },
+        {
+          "name": "Rbot",
+          "position": 5,
+          "type": "float",
+          "description": "Elevation of the bottom of the riverbed (L).",
+          "tooltip": "When head drops below Rbot, the river leaks at a constant rate = Conductance * (Stage - Rbot). This prevents unlimited seepage."
+        }
+      ]
+    }
+  ]
+}

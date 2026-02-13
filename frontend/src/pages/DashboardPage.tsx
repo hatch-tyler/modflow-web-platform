@@ -12,6 +12,7 @@ import DrawdownChart from '../components/dashboard/DrawdownChart'
 import WaterBudgetChart from '../components/dashboard/WaterBudgetChart'
 import HeadTimeSeriesChart from '../components/dashboard/HeadTimeSeriesChart'
 import ConvergencePlot from '../components/dashboard/ConvergencePlot'
+import ConvergenceAnalysis from '../components/dashboard/ConvergenceAnalysis'
 import ExpandableChart from '../components/dashboard/ExpandableChart'
 import ChartTabs from '../components/dashboard/ChartTabs'
 import AwaitingData from '../components/dashboard/AwaitingData'
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'budget', label: 'Water Budget' },
   { id: 'timeseries', label: 'Head Time Series' },
   { id: 'convergence', label: 'Mass Balance' },
+  { id: 'convergence-analysis', label: 'Convergence Analysis' },
 ]
 
 function formatDuration(startTime: string): string {
@@ -100,6 +102,7 @@ function PostProcessingStatus({
     budget: 'budget',
     timeseries: 'timeseries',
     convergence: 'listing',
+    'convergence-analysis': 'listing',
   }
 
   return (
@@ -600,6 +603,16 @@ export default function DashboardPage() {
                       <ConvergencePlot
                         summary={summary}
                         expanded={expanded}
+                        compareSummary={compareMode ? compareSummary : undefined}
+                      />
+                    )}
+                    {activeTab === 'convergence-analysis' && (
+                      <ConvergenceAnalysis
+                        projectId={projectId!}
+                        runId={selectedRunId!}
+                        summary={summary}
+                        expanded={expanded}
+                        compareRunId={compareMode ? compareRunId ?? undefined : undefined}
                         compareSummary={compareMode ? compareSummary : undefined}
                       />
                     )}

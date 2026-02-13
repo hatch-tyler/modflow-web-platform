@@ -1,0 +1,76 @@
+{
+  "package_name": "RCH",
+  "description": "Recharge",
+  "file_extensions": [".rch"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling recharge package behavior and output.",
+      "variables": [
+        {
+          "name": "FIXED_CELL",
+          "type": "keyword",
+          "description": "Keyword indicating that recharge is always applied to the specified cell regardless of whether it is active or inactive.",
+          "tooltip": "When specified, recharge is applied to the designated cell even if the cell goes dry. By default (without FIXED_CELL), recharge is applied to the highest active cell in each vertical column."
+        },
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each recharge entry.",
+          "tooltip": "One or more names of auxiliary variables read with each recharge entry. Can be used for multipliers (with AUXMULTNAME) or for passing concentrations to transport models."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the recharge rate.",
+          "tooltip": "The named auxiliary variable is multiplied by the RECHARGE rate to compute the actual recharge flux. Useful for spatially varying multipliers."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print recharge input data to the listing file.",
+          "tooltip": "When specified, recharge data read for each stress period is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print recharge flow rates to the listing file.",
+          "tooltip": "When specified, computed recharge flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save recharge flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, recharge flow terms are written to the binary budget file for post-processing."
+        },
+        {
+          "name": "READASARRAYS",
+          "type": "keyword",
+          "description": "Keyword indicating that recharge data is read as grid-based arrays rather than cell-by-cell list input.",
+          "tooltip": "When specified, IRCH and RECHARGE are read as full grid arrays (one value per cell in the plan view). This is the traditional MODFLOW approach. Without this keyword, data is read as a list of individual cell entries."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period recharge data. Format depends on whether READASARRAYS is specified.",
+      "variables": [
+        {
+          "name": "IRCH",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "Layer index array indicating which layer receives recharge at each horizontal location.",
+          "tooltip": "Integer array specifying the layer number for recharge application at each row-column location. Only used with READASARRAYS. If not specified, recharge is applied to layer 1 (or the highest active cell if FIXED_CELL is not specified)."
+        },
+        {
+          "name": "RECHARGE",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "Recharge flux rate applied to each cell, in units of length per time.",
+          "tooltip": "Volumetric flux rate per unit area (length/time). Positive values add water to the model. The rate is multiplied by the cell area to compute the volumetric recharge. Typical values for precipitation recharge range from 1e-9 to 1e-7 m/s."
+        }
+      ]
+    }
+  ]
+}

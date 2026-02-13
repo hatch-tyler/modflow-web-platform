@@ -1,0 +1,92 @@
+{
+  "package_name": "WEL",
+  "description": "Well Package",
+  "file_extensions": [".wel"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling well package behavior, auxiliary variables, and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names that will be associated with each well.",
+          "tooltip": "One or more names of auxiliary variables to be read with each well entry. Auxiliary variables can be used for multipliers (with AUXMULTNAME), concentrations for transport, or other user-defined data."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the well pumping rate.",
+          "tooltip": "The named auxiliary variable is multiplied by Q to compute the actual pumping rate. Useful for applying seasonal or other time-varying multipliers without changing the base rate."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each well.",
+          "tooltip": "When specified, each well entry can include an optional text name (up to 40 characters). Boundary names can be used to group wells for budget reporting and observation processing."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print well input data to the listing file.",
+          "tooltip": "When specified, well data read for each stress period is echoed to the listing file. Useful for verifying input but can increase listing file size."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print well flow rates to the listing file.",
+          "tooltip": "When specified, well flow rates are printed to the listing file for each time step. Shows actual extraction or injection rates including any auto-flow reductions."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save well flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, well flow terms are written to the binary budget file. Required for post-processing well contributions to the water budget."
+        },
+        {
+          "name": "MAXBOUND",
+          "type": "integer",
+          "description": "Maximum number of well entries allowed in any stress period.",
+          "tooltip": "Sets the maximum number of wells that can be specified in any single stress period. Used for memory allocation. If not specified, it is determined automatically."
+        },
+        {
+          "name": "AUTO_FLOW_REDUCE",
+          "type": "float",
+          "description": "Fraction of cell thickness used to reduce the pumping rate when the water level drops near the cell bottom.",
+          "tooltip": "When the head in the cell drops below the cell bottom plus AUTO_FLOW_REDUCE times the cell thickness, the pumping rate is reduced proportionally. Helps prevent cells from going dry. Typical value is 0.1. Only applies to extraction (negative Q) wells."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period well data specifying cell locations and pumping rates.",
+      "variables": [
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the well location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell containing the well. For structured grids (DIS), specify as three integers: layer row column. For vertex grids (DISV), specify as two integers: layer cell2d_number."
+        },
+        {
+          "name": "Q",
+          "type": "float",
+          "description": "Volumetric pumping rate for the well. Negative values indicate extraction; positive values indicate injection.",
+          "tooltip": "Well pumping rate in units of length cubed per time. Negative values extract water from the aquifer (pumping). Positive values inject water into the aquifer. The value is multiplied by AUXMULTNAME if specified."
+        },
+        {
+          "name": "AUX",
+          "type": "float_list",
+          "description": "Values for each auxiliary variable defined in OPTIONS.",
+          "tooltip": "One value for each auxiliary variable in the order they were defined. These can represent concentrations, multipliers, or other user-defined data associated with the well."
+        },
+        {
+          "name": "BOUNDNAME",
+          "type": "string",
+          "description": "Text name for the well boundary (up to 40 characters).",
+          "tooltip": "Optional name for the well, used in budget reporting and observations. Only read if BOUNDNAMES is specified in OPTIONS. Can contain spaces if enclosed in quotes."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "package_name": "PCG",
+  "description": "Preconditioned Conjugate-Gradient Solver Package - Solves the finite-difference equations using the PCG2 algorithm",
+  "file_extensions": [".pcg"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/pcg.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Iteration and preconditioning parameters",
+      "variables": [
+        {
+          "name": "MXITER",
+          "position": 0,
+          "type": "integer",
+          "description": "Maximum number of outer iterations (nonlinear iterations).",
+          "tooltip": "Maximum number of outer iterations. For most problems, 50-100 is sufficient. Increase for highly nonlinear problems."
+        },
+        {
+          "name": "ITER1",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of inner iterations (linear solver iterations) per outer iteration.",
+          "tooltip": "Maximum number of inner iterations within each outer iteration. Typical values: 30-100. Larger models may need more."
+        },
+        {
+          "name": "NPCOND",
+          "position": 2,
+          "type": "integer",
+          "description": "Preconditioner flag. 1=Modified Incomplete Cholesky, 2=Polynomial.",
+          "tooltip": "1=Modified Incomplete Cholesky (more robust, uses more memory). 2=Polynomial (less memory, may converge slower)."
+        },
+        {
+          "name": "IHCOFADD",
+          "position": 3,
+          "type": "integer",
+          "optional": true,
+          "description": "Flag controlling addition of HCOF to the system of equations. 0=no addition (default).",
+          "tooltip": "0=standard formulation. Nonzero adds HCOF values to conductance, which can improve convergence in some cases."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Convergence criteria and damping",
+      "variables": [
+        {
+          "name": "HCLOSE",
+          "position": 0,
+          "type": "float",
+          "description": "Head change criterion for convergence (L). Iterations stop when head change is less than HCLOSE.",
+          "tooltip": "Head closure criterion. Convergence is achieved when the maximum absolute head change is less than HCLOSE. Typical: 0.001 to 0.01 (in model length units)."
+        },
+        {
+          "name": "RCLOSE",
+          "position": 1,
+          "type": "float",
+          "description": "Residual criterion for convergence (L^3/T). Iterations stop when residual is less than RCLOSE.",
+          "tooltip": "Residual closure criterion. Convergence also requires the maximum absolute residual to be less than RCLOSE. Typical: 0.1 to 1.0."
+        },
+        {
+          "name": "RELAX",
+          "position": 2,
+          "type": "float",
+          "description": "Relaxation parameter for Modified Incomplete Cholesky preconditioning. Usually 1.0.",
+          "tooltip": "Relaxation parameter. 1.0 is standard. Values < 1.0 add additional terms to the preconditioner. Only used when NPCOND=1."
+        },
+        {
+          "name": "NBPOL",
+          "position": 3,
+          "type": "integer",
+          "description": "Degree of the polynomial preconditioner. 0=value computed internally, >0=use this value.",
+          "tooltip": "Used only when NPCOND=2. 0 lets MODFLOW compute the optimal degree. 2 is a common explicit value."
+        },
+        {
+          "name": "IPRPCG",
+          "position": 4,
+          "type": "integer",
+          "description": "Printout interval for PCG iterations. Iterations are printed every IPRPCG time steps.",
+          "tooltip": "Controls how often solver convergence information is printed to the listing file. 1=every time step."
+        },
+        {
+          "name": "MUTPCG",
+          "position": 5,
+          "type": "integer",
+          "description": "Printout flag. 0=print all, 1=print if fails, 2=no printing, 3=print convergence only.",
+          "tooltip": "0=tables printed each iteration. 1=print only if convergence fails. 2=no solver printing. 3=print max head change and residual each iteration."
+        },
+        {
+          "name": "DAMPPCG",
+          "position": 6,
+          "type": "float",
+          "optional": true,
+          "description": "Damping factor. 1.0=no damping, <1.0=dampened head changes. Typically 0.5-1.0.",
+          "tooltip": "Damping factor applied to head changes. 1.0 means full correction. Values < 1.0 reduce the head change per iteration, improving stability for nonlinear problems."
+        }
+      ]
+    }
+  ]
+}

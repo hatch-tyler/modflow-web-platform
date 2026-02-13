@@ -1,0 +1,206 @@
+{
+  "package_name": "CLN",
+  "description": "Connected Linear Network Package - Simulates flow in one-dimensional conduit networks (pipes, fractures, karst features) connected to the groundwater flow model",
+  "file_extensions": [".cln"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "CLN dimensions and control flags",
+      "variables": [
+        {
+          "name": "NCLN",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of CLN nodes (linear network nodes).",
+          "tooltip": "Total number of nodes in the connected linear network. Each CLN node represents a segment of a conduit, pipe, or fracture."
+        },
+        {
+          "name": "ICLNNDS",
+          "position": 1,
+          "type": "integer",
+          "description": "Flag for CLN node input. >0=number of CLN node property records, <0=read node data from DISU-like input.",
+          "tooltip": "If > 0, ICLNNDS node property records are read. If < 0, CLN network geometry is read in a DISU-like format."
+        },
+        {
+          "name": "ICLNCB",
+          "position": 2,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell CLN flow terms. 0=no output.",
+          "tooltip": "If > 0, CLN flow terms saved to binary file for post-processing."
+        },
+        {
+          "name": "ICLNHD",
+          "position": 3,
+          "type": "integer",
+          "description": "Unit number for CLN head output. 0=no output.",
+          "tooltip": "If > 0, CLN heads saved to the specified unit number."
+        },
+        {
+          "name": "ICLNDD",
+          "position": 4,
+          "type": "integer",
+          "description": "Unit number for CLN drawdown output. 0=no output.",
+          "tooltip": "If > 0, CLN drawdowns saved to the specified unit number."
+        },
+        {
+          "name": "ICLNIB",
+          "position": 5,
+          "type": "integer",
+          "description": "Unit number for CLN IBOUND output. 0=no output.",
+          "tooltip": "If > 0, CLN boundary condition (IBOUND) information saved."
+        },
+        {
+          "name": "NCLNGWC",
+          "position": 6,
+          "type": "integer",
+          "description": "Number of CLN-to-GWF (groundwater flow) connections.",
+          "tooltip": "Total number of connections between CLN nodes and the groundwater flow (GWF) model cells."
+        },
+        {
+          "name": "NCONDUITYP",
+          "position": 7,
+          "type": "integer",
+          "description": "Number of circular conduit types for which geometry will be defined.",
+          "tooltip": "Number of predefined circular conduit cross-section types. Properties like radius and roughness are defined for each type."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "CLN node data - properties for each CLN node",
+      "repeat": "|ICLNNDS|",
+      "variables": [
+        {
+          "name": "IFNO",
+          "position": 0,
+          "type": "integer",
+          "description": "CLN node number (1-based).",
+          "tooltip": "Node number within the CLN network. Must be sequential from 1 to NCLN."
+        },
+        {
+          "name": "IFTYP",
+          "position": 1,
+          "type": "integer",
+          "description": "Conduit type number. References one of the NCONDUITYP predefined types, or 0 for a non-circular cross section.",
+          "tooltip": "Links to a predefined conduit type for cross-section properties. 0=non-circular (properties specified directly)."
+        },
+        {
+          "name": "IFDIR",
+          "position": 2,
+          "type": "integer",
+          "description": "Direction flag. 0=horizontal, 1=vertical, 2=angled.",
+          "tooltip": "0=horizontal conduit. 1=vertical conduit. 2=conduit at an angle specified by FANGLE."
+        },
+        {
+          "name": "FLENG",
+          "position": 3,
+          "type": "float",
+          "description": "Length of the CLN node segment (L).",
+          "tooltip": "Length of the conduit segment represented by this CLN node."
+        },
+        {
+          "name": "FELEV",
+          "position": 4,
+          "type": "float",
+          "description": "Bottom elevation of the CLN node (L).",
+          "tooltip": "Elevation of the bottom (invert) of the conduit at this node location."
+        },
+        {
+          "name": "FANGLE",
+          "position": 5,
+          "type": "float",
+          "description": "Angle of inclination of the conduit (degrees from horizontal).",
+          "tooltip": "Angle from horizontal in degrees. 0=horizontal, 90=vertical. Only used when IFDIR=2."
+        },
+        {
+          "name": "IFLIN",
+          "position": 6,
+          "type": "integer",
+          "description": "Flow equation flag. 0=Manning, 1=Darcy-Weisbach (laminar), 2=Poiseuille, negative=general power law.",
+          "tooltip": "0=Manning's equation for open-channel/pipe flow. 1=Darcy-Weisbach for laminar conditions. 2=Poiseuille (Hagen-Poiseuille). <0=general power law."
+        },
+        {
+          "name": "ICCWADI",
+          "position": 7,
+          "type": "integer",
+          "description": "Flag for constraining CLN node: 0=no constraint, 1=constrain to non-negative head above bottom.",
+          "tooltip": "0=no constraint. 1=CLN head constrained to be >= FELEV (prevents negative depth in conduits)."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "CLN-to-GWF connection data",
+      "repeat": "NCLNGWC",
+      "variables": [
+        {
+          "name": "IFNO",
+          "position": 0,
+          "type": "integer",
+          "description": "CLN node number for this connection (1-based).",
+          "tooltip": "CLN node number that is connected to a GWF cell."
+        },
+        {
+          "name": "IGWNOD",
+          "position": 1,
+          "type": "integer",
+          "description": "GWF node number connected to the CLN node (1-based).",
+          "tooltip": "Groundwater flow model node (cell) number connected to this CLN node."
+        },
+        {
+          "name": "IFCON",
+          "position": 2,
+          "type": "integer",
+          "description": "Connection type flag. 0=no conductance modification, 1=CLN conductance, 2=GWF conductance, 3=both.",
+          "tooltip": "Controls how the CLN-GWF conductance is computed. Determines which side (CLN, GWF, or both) contributes to the interface conductance."
+        },
+        {
+          "name": "SGCL",
+          "position": 3,
+          "type": "float",
+          "description": "Skin-corrected distance or conductance for the CLN side of the connection (L or L^2/T).",
+          "tooltip": "Distance from CLN node center to the interface, or the CLN-side conductance, depending on IFCON."
+        },
+        {
+          "name": "FGCL",
+          "position": 4,
+          "type": "float",
+          "description": "Distance or conductance for the GWF side of the connection (L or L^2/T).",
+          "tooltip": "Distance from GWF cell center to the interface, or the GWF-side conductance, depending on IFCON."
+        },
+        {
+          "name": "SGCAREA",
+          "position": 5,
+          "type": "float",
+          "description": "Cross-sectional area of the CLN-GWF connection from the CLN side (L^2).",
+          "tooltip": "Interface area on the CLN side. Used with SGCL to compute the CLN-side conductance."
+        },
+        {
+          "name": "FGCAREA",
+          "position": 6,
+          "type": "float",
+          "description": "Cross-sectional area of the CLN-GWF connection from the GWF side (L^2).",
+          "tooltip": "Interface area on the GWF side. Used with FGCL to compute the GWF-side conductance."
+        }
+      ]
+    }
+  ]
+}

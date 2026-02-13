@@ -1,0 +1,232 @@
+{
+  "package_name": "UPW",
+  "description": "Upstream Weighting Package - Specifies hydraulic properties using upstream weighting for use with the Newton solver (NWT)",
+  "file_extensions": [".upw"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow-nwt/MODFLOW-NWT-Guide/upw.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "UPW flags and options",
+      "variables": [
+        {
+          "name": "IUPWCB",
+          "position": 0,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, cell-by-cell flow terms are written to the specified unit number. If 0, no cell-by-cell flow output."
+        },
+        {
+          "name": "HDRY",
+          "position": 1,
+          "type": "float",
+          "description": "Head assigned to cells that are converted to dry during a simulation.",
+          "tooltip": "Head value for dry cells in output. Common value: -1.0E+30. With NWT, cells generally do not go dry due to the smooth formulation."
+        },
+        {
+          "name": "NPUPW",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of UPW parameters. Currently must be 0.",
+          "tooltip": "Number of UPW parameters. Typically set to 0."
+        },
+        {
+          "name": "IPHDRY",
+          "position": 3,
+          "type": "integer",
+          "description": "Flag to set head at cells that convert to dry to HDRY. 0=head not set to HDRY, 1=head set to HDRY.",
+          "tooltip": "If 1, when a cell converts to dry its head is set to HDRY in output. If 0, the computed head is retained."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Layer type flags",
+      "variables": [
+        {
+          "name": "LAYTYP",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Layer type for each layer. 0=confined, >0=convertible, <0=convertible with constant T.",
+          "tooltip": "One value per layer. 0=confined (transmissivity constant). >0=convertible (transmissivity varies with saturated thickness). <0=convertible using upstream weighting with constant transmissivity."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Interblock transmissivity averaging method",
+      "variables": [
+        {
+          "name": "LAYAVG",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Interblock transmissivity averaging method. 0=harmonic mean, 1=logarithmic mean, 2=arithmetic/logarithmic mean.",
+          "tooltip": "One value per layer. 0=harmonic mean (default), 1=logarithmic mean, 2=arithmetic mean of saturated thickness and logarithmic mean of hydraulic conductivity."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "free",
+      "description": "Horizontal anisotropy flag",
+      "variables": [
+        {
+          "name": "CHANI",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NLAY"],
+          "description": "Horizontal anisotropy flag/value. >0=ratio of Ky/Kx (constant for layer), <=0=HANI array is read.",
+          "tooltip": "One value per layer. If positive, it is the anisotropy ratio applied uniformly. If zero or negative, a 2D HANI array is read."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "free",
+      "description": "Vertical hydraulic conductivity flag",
+      "variables": [
+        {
+          "name": "LAYVKA",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Flag indicating how VKA is specified. 0=VKA is vertical K, nonzero=VKA is ratio of Kh/Kv.",
+          "tooltip": "One value per layer. 0 means VKA values are vertical hydraulic conductivity. Nonzero means VKA values are Kh/Kv ratio."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "free",
+      "description": "Wetting capability flag (ignored by NWT but must be specified)",
+      "variables": [
+        {
+          "name": "LAYWET",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Wetting flag for each layer. Must be 0 for all layers when using UPW with NWT.",
+          "tooltip": "All values must be 0 with the UPW package. The NWT solver handles dry cells through its smooth formulation without traditional rewetting."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "array",
+      "description": "Horizontal hydraulic conductivity",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "HK",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Horizontal hydraulic conductivity along rows (Kx) for each cell.",
+          "tooltip": "2D array of horizontal hydraulic conductivity (L/T). Read for each layer. Values must be > 0 for active cells."
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "format": "array",
+      "description": "Horizontal anisotropy array",
+      "condition": "CHANI <= 0 for the layer",
+      "repeat": "layers where CHANI <= 0",
+      "variables": [
+        {
+          "name": "HANI",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Ratio of hydraulic conductivity along columns to Kx for each cell.",
+          "tooltip": "2D array of anisotropy ratios (Ky/Kx). Only read for layers where CHANI <= 0."
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "format": "array",
+      "description": "Vertical hydraulic conductivity or ratio",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "VKA",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Vertical hydraulic conductivity or ratio of Kh/Kv, depending on LAYVKA.",
+          "tooltip": "2D array read for each layer. If LAYVKA=0, values are vertical K (L/T). If LAYVKA!=0, values are Kh/Kv ratio."
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "format": "array",
+      "description": "Specific storage (transient simulations)",
+      "condition": "any stress period is transient",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "SS",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Specific storage for each cell (1/L).",
+          "tooltip": "2D array read for each layer. Typical values: 1e-6 to 1e-4 (1/L). Only read if there are transient stress periods."
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "format": "array",
+      "description": "Specific yield (transient, convertible layers)",
+      "condition": "transient and LAYTYP != 0",
+      "repeat": "convertible layers",
+      "variables": [
+        {
+          "name": "SY",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Specific yield for each cell (dimensionless).",
+          "tooltip": "2D array read for convertible layers in transient simulations. Typical values: 0.01 to 0.30."
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "format": "array",
+      "description": "Vertical conductivity of confining bed",
+      "condition": "LAYCBD != 0 for the layer",
+      "repeat": "layers with confining beds",
+      "variables": [
+        {
+          "name": "VKCB",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Vertical hydraulic conductivity of the quasi-3D confining bed below the layer.",
+          "tooltip": "2D array read for layers that have a confining bed (LAYCBD != 0). Units are L/T."
+        }
+      ]
+    }
+  ]
+}

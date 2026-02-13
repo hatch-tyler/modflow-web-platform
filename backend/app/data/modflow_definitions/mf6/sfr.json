@@ -1,0 +1,189 @@
+{
+  "package_name": "SFR",
+  "description": "Streamflow Routing",
+  "file_extensions": [".sfr"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling streamflow routing behavior, output, and iteration parameters.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each stream reach.",
+          "tooltip": "One or more names of auxiliary variables read with each reach entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each stream reach.",
+          "tooltip": "When specified, each reach entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print SFR input data to the listing file.",
+          "tooltip": "When specified, stream reach data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print SFR flow rates to the listing file.",
+          "tooltip": "When specified, computed streamflow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save SFR flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, stream-aquifer flow exchange terms are written to the binary budget file."
+        },
+        {
+          "name": "STAGE FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing stream stage output.",
+          "tooltip": "Specifies the file name for saving computed stream stages. Used for post-processing and visualization of stream water levels."
+        },
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing detailed SFR budget output.",
+          "tooltip": "Specifies the file name for saving the detailed stream budget including inflows, outflows, and leakage for each reach."
+        },
+        {
+          "name": "MAXIMUM_PICARD_ITERATIONS",
+          "type": "integer",
+          "description": "Maximum number of Picard iterations for resolving the SFR package within each outer iteration.",
+          "tooltip": "Controls the number of SFR-specific iterations per GWF outer iteration. Default is 100. Increase for complex stream networks with diversions."
+        },
+        {
+          "name": "MAXIMUM_ITERATIONS",
+          "type": "integer",
+          "description": "Maximum number of Newton iterations for the SFR depth calculation at each reach.",
+          "tooltip": "Controls the convergence of the stream depth calculation using Newton's method. Default is 100."
+        },
+        {
+          "name": "MAXIMUM_DEPTH_CHANGE",
+          "type": "float",
+          "description": "Depth change convergence criterion for the SFR Newton iterations.",
+          "tooltip": "SFR depth iterations converge when the maximum depth change is less than this value. Default is 1e-5. Units are length."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Static reach data defining the physical properties of each stream reach.",
+      "variables": [
+        {
+          "name": "RNO",
+          "type": "integer",
+          "description": "Reach number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each stream reach, numbered from 1 to the total number of reaches. Used to reference reaches in CONNECTIONDATA and PERIOD blocks."
+        },
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the reach location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell containing this stream reach. The cell receives or loses water based on the head-stage relationship. Use NONE if the reach is not connected to a GWF cell."
+        },
+        {
+          "name": "RLEN",
+          "type": "float",
+          "description": "Length of the stream reach, in model length units.",
+          "tooltip": "The length of the stream channel within this reach. Used to compute streambed conductance and Manning's equation for flow routing."
+        },
+        {
+          "name": "RWID",
+          "type": "float",
+          "description": "Width of the stream reach, in model length units.",
+          "tooltip": "The width of the stream channel. Used to compute streambed area for leakage and cross-sectional area for Manning's equation."
+        },
+        {
+          "name": "RGRD",
+          "type": "float",
+          "description": "Stream gradient (slope) of the reach, dimensionless.",
+          "tooltip": "The slope of the stream channel (rise over run). Used in Manning's equation to compute stream velocity and discharge. Must be positive."
+        },
+        {
+          "name": "RTP",
+          "type": "float",
+          "description": "Top elevation of the streambed, in model length units.",
+          "tooltip": "Elevation of the top of the streambed at the upstream end of the reach. Used to define the stream-aquifer connection geometry."
+        },
+        {
+          "name": "RBTH",
+          "type": "float",
+          "description": "Thickness of the streambed, in model length units.",
+          "tooltip": "Thickness of the low-permeability streambed layer. Used with RHK to compute streambed conductance: COND = RHK * RLEN * RWID / RBTH."
+        },
+        {
+          "name": "RHK",
+          "type": "float",
+          "description": "Hydraulic conductivity of the streambed, in model length per time units.",
+          "tooltip": "Vertical hydraulic conductivity of the streambed material. Lower values restrict flow between the stream and aquifer. Typical values range from 1e-7 to 1e-3 m/s."
+        },
+        {
+          "name": "MAN",
+          "type": "float",
+          "description": "Manning's roughness coefficient for the stream reach, dimensionless.",
+          "tooltip": "Controls friction and flow velocity in the stream channel. Typical values: 0.025-0.035 for clean channels, 0.035-0.075 for vegetated channels, 0.075-0.150 for heavily obstructed channels."
+        },
+        {
+          "name": "NCON",
+          "type": "integer",
+          "description": "Number of reaches connected to this reach.",
+          "tooltip": "Total number of upstream and downstream connections for this reach. Must match the number of entries for this reach in the CONNECTIONDATA block."
+        },
+        {
+          "name": "USTRF",
+          "type": "float",
+          "description": "Fraction of upstream flow routed to this reach, dimensionless (0.0 to 1.0).",
+          "tooltip": "For reaches with multiple upstream connections, specifies the fraction of total upstream flow received. The sum of USTRF for all downstream reaches at a junction should equal 1.0."
+        },
+        {
+          "name": "NDIV",
+          "type": "integer",
+          "description": "Number of downstream diversions from this reach.",
+          "tooltip": "The number of diversions that can take water from this reach. Diversions are specified in the PERIOD block using the DIVERSION setting."
+        }
+      ]
+    },
+    {
+      "name": "CONNECTIONDATA",
+      "description": "Reach connectivity data defining upstream and downstream connections.",
+      "variables": [
+        {
+          "name": "RNO",
+          "type": "integer",
+          "description": "Reach number for which connections are specified.",
+          "tooltip": "The reach number from PACKAGEDATA. Each reach must have NCON connection entries."
+        },
+        {
+          "name": "IC",
+          "type": "integer_list",
+          "description": "Connected reach numbers. Negative values indicate downstream connections; positive values indicate upstream connections.",
+          "tooltip": "List of reach numbers connected to this reach. Positive values are upstream reaches (inflow), negative values are downstream reaches (outflow). The number of values must equal NCON."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying time-varying reach properties and boundary conditions.",
+      "variables": [
+        {
+          "name": "RNO",
+          "type": "integer",
+          "description": "Reach number for which settings are specified.",
+          "tooltip": "The reach number from PACKAGEDATA to which the following setting applies."
+        },
+        {
+          "name": "SETTING",
+          "type": "keyword_value",
+          "options": ["STATUS", "STAGE", "RAINFALL", "EVAPORATION", "RUNOFF", "INFLOW", "DIVERSION", "UPSTREAM_FRACTION", "CROSS_SECTION"],
+          "description": "Keyword and value pair specifying a time-varying property for the reach.",
+          "tooltip": "STATUS sets the reach state (ACTIVE, INACTIVE, SIMPLE). STAGE fixes the stream stage. RAINFALL adds direct precipitation (L/T). EVAPORATION removes water (L/T). RUNOFF adds overland flow (L3/T). INFLOW specifies direct inflow (L3/T). DIVERSION specifies diversion rates to downstream reaches."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "package_name": "GMG",
+  "description": "Geometric Multigrid Solver Package - Solves the finite-difference equations using a geometric multigrid algorithm",
+  "file_extensions": [".gmg"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/gmg.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Convergence criteria and iteration limits",
+      "variables": [
+        {
+          "name": "RCLOSE",
+          "position": 0,
+          "type": "float",
+          "description": "Residual convergence criterion (L^3/T).",
+          "tooltip": "Inner iterations stop when the maximum absolute value of the residual is less than RCLOSE. Typical: 0.01 to 1.0."
+        },
+        {
+          "name": "IITER",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of inner (multigrid) iterations per outer iteration.",
+          "tooltip": "Maximum number of GMG iterations within each outer iteration. Typical: 100."
+        },
+        {
+          "name": "HCLOSE",
+          "position": 2,
+          "type": "float",
+          "description": "Head change convergence criterion (L).",
+          "tooltip": "Outer iterations stop when the maximum absolute head change is less than HCLOSE. Typical: 0.001 to 0.01."
+        },
+        {
+          "name": "MXITER",
+          "position": 3,
+          "type": "integer",
+          "description": "Maximum number of outer iterations.",
+          "tooltip": "Maximum number of outer (Picard) iterations per time step. Typical: 50-100."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Damping and output controls",
+      "variables": [
+        {
+          "name": "DAMP",
+          "position": 0,
+          "type": "float",
+          "description": "Damping factor. 1.0=no damping, <1.0=damped head changes.",
+          "tooltip": "Damping parameter for outer iterations. 1.0=no damping. Values < 1.0 reduce head changes per iteration. Typical: 0.5-1.0."
+        },
+        {
+          "name": "IADAMP",
+          "position": 1,
+          "type": "integer",
+          "description": "Adaptive damping flag. 0=constant damping, 1=adaptive damping, 2=relative reduced residual damping.",
+          "tooltip": "0=use DAMP as constant. 1=adaptive damping adjusts automatically. 2=cooley under-relaxation based on relative reduced residual."
+        },
+        {
+          "name": "IOUTGMG",
+          "position": 2,
+          "type": "integer",
+          "description": "Output flag. 0=no output, 1=convergence summary, 2=inner iteration details, 3=max detail, 4=progress info.",
+          "tooltip": "Controls detail level of solver output to the listing file. 0=silent. Higher values provide more diagnostic information."
+        },
+        {
+          "name": "ISM",
+          "position": 3,
+          "type": "integer",
+          "description": "Smoother type. 0=ILU(0), 1=SGS (symmetric Gauss-Seidel).",
+          "tooltip": "Multigrid smoother selection. 0=ILU(0) (recommended, more robust). 1=SGS (faster per iteration but may need more iterations)."
+        },
+        {
+          "name": "ISC",
+          "position": 4,
+          "type": "integer",
+          "description": "Semi-coarsening flag. 0=row-col-layer, 1=row-col, 2=row, 3=col, 4=layer.",
+          "tooltip": "Controls which dimensions are coarsened in the multigrid. 0=all three (standard). Other values restrict coarsening to specified dimensions."
+        }
+      ]
+    }
+  ]
+}

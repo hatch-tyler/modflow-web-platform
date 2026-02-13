@@ -1,0 +1,194 @@
+{
+  "package_name": "UZF",
+  "description": "Unsaturated Zone Flow",
+  "file_extensions": [".uzf"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling unsaturated zone flow package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each UZF cell.",
+          "tooltip": "One or more names of auxiliary variables read with each UZF entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each UZF cell.",
+          "tooltip": "When specified, each UZF entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print UZF input data to the listing file.",
+          "tooltip": "When specified, UZF data is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print UZF flow rates to the listing file.",
+          "tooltip": "When specified, computed UZF flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save UZF flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, UZF flow terms are written to the binary budget file."
+        },
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing detailed UZF budget output.",
+          "tooltip": "Specifies the file name for saving the detailed UZF budget including infiltration, ET, and recharge to the water table."
+        },
+        {
+          "name": "SIMULATE_ET",
+          "type": "keyword",
+          "description": "Keyword to simulate evapotranspiration within the unsaturated zone.",
+          "tooltip": "When specified, ET is simulated as water is removed from the unsaturated zone based on PET, extinction depth, and extinction water content. Requires PET and EXTDP in PERIOD block."
+        },
+        {
+          "name": "LINEAR_GWET",
+          "type": "keyword",
+          "description": "Keyword to use a linear function for groundwater ET.",
+          "tooltip": "When specified, groundwater ET varies linearly between the ET surface and the extinction depth. By default, a square wave function is used."
+        },
+        {
+          "name": "UNSAT_ETWC",
+          "type": "keyword",
+          "description": "Keyword to simulate ET from the unsaturated zone using the water content-based approach.",
+          "tooltip": "When specified, unsaturated zone ET is computed based on the current water content relative to the residual and saturated water contents."
+        },
+        {
+          "name": "UNSAT_ETAE",
+          "type": "keyword",
+          "description": "Keyword to simulate ET from the unsaturated zone using the actual evaporation approach.",
+          "tooltip": "When specified, unsaturated zone ET uses a capillary pressure-based approach with HA, HROOT, and ROOTACT parameters from the PERIOD block."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Static UZF cell data defining the physical properties of each unsaturated zone cell.",
+      "variables": [
+        {
+          "name": "IUZNO",
+          "type": "integer",
+          "description": "UZF cell number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each UZF cell, numbered from 1. Used to reference UZF cells in the PERIOD block."
+        },
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the UZF cell location in the GWF model.",
+          "tooltip": "Identifies the groundwater model cell where this UZF cell is located. Recharge from the unsaturated zone enters the groundwater model at this cell."
+        },
+        {
+          "name": "LANDFLAG",
+          "type": "integer",
+          "description": "Flag indicating if the UZF cell is at the land surface (1) or subsurface (0).",
+          "tooltip": "Set to 1 for the uppermost UZF cell in a column (land surface). Set to 0 for deeper UZF cells. Only land surface cells receive infiltration."
+        },
+        {
+          "name": "IVERTCON",
+          "type": "integer",
+          "description": "UZF cell number of the cell directly below this one in the unsaturated zone column.",
+          "tooltip": "Defines the vertical connectivity of UZF cells. Set to 0 if this is the bottom UZF cell (directly above the water table). Otherwise, set to the IUZNO of the cell below."
+        },
+        {
+          "name": "SURFDEP",
+          "type": "float",
+          "description": "Surface depression storage depth, in model length units.",
+          "tooltip": "Depth of surface depressions that must fill before runoff occurs. Water stored in depressions is available for infiltration and ET. Typical values are 0.01 to 0.1 meters."
+        },
+        {
+          "name": "VKS",
+          "type": "float",
+          "description": "Saturated vertical hydraulic conductivity of the unsaturated zone, in model length per time units.",
+          "tooltip": "Maximum infiltration rate and vertical conductivity of the unsaturated zone material. Controls the rate of downward water movement. Typical values depend on soil type."
+        },
+        {
+          "name": "THTR",
+          "type": "float",
+          "description": "Residual (irreducible) water content of the unsaturated zone, dimensionless.",
+          "tooltip": "The minimum water content below which drainage by gravity ceases. Represents water held by capillary forces. Typical values: 0.02-0.05 for sand, 0.07-0.15 for clay."
+        },
+        {
+          "name": "THTS",
+          "type": "float",
+          "description": "Saturated water content of the unsaturated zone, dimensionless.",
+          "tooltip": "The maximum water content (approximately equal to porosity). Typical values: 0.30-0.45 for sand, 0.38-0.55 for clay."
+        },
+        {
+          "name": "THTI",
+          "type": "float",
+          "description": "Initial water content of the unsaturated zone, dimensionless.",
+          "tooltip": "Starting water content at the beginning of the simulation. Must be between THTR and THTS. Affects initial moisture storage and drainage."
+        },
+        {
+          "name": "EPS",
+          "type": "float",
+          "description": "Brooks-Corey epsilon exponent for the unsaturated zone, dimensionless.",
+          "tooltip": "Defines the shape of the moisture retention curve. Higher values produce sharper transitions between wet and dry conditions. Typical values: 3.5 for sand, 5.0-8.0 for silt and clay."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying time-varying UZF boundary conditions.",
+      "variables": [
+        {
+          "name": "IUZNO",
+          "type": "integer",
+          "description": "UZF cell number for which data is specified.",
+          "tooltip": "The UZF cell number from PACKAGEDATA. Only land surface cells (LANDFLAG=1) should receive infiltration."
+        },
+        {
+          "name": "FINF",
+          "type": "float",
+          "description": "Infiltration rate applied to the UZF cell, in units of length per time.",
+          "tooltip": "Applied infiltration flux at the land surface. Excess infiltration (above VKS) becomes rejected infiltration or runoff. Typically represents net precipitation minus surface runoff."
+        },
+        {
+          "name": "PET",
+          "type": "float",
+          "description": "Potential evapotranspiration rate, in units of length per time.",
+          "tooltip": "Maximum possible ET rate. Actual ET depends on water availability and depth below the ET surface. Only used when SIMULATE_ET is active."
+        },
+        {
+          "name": "EXTDP",
+          "type": "float",
+          "description": "ET extinction depth below the land surface, in model length units.",
+          "tooltip": "Depth below the land surface at which ET ceases. ET rate decreases with depth from PET at the surface to zero at EXTDP. Only used when SIMULATE_ET is active."
+        },
+        {
+          "name": "EXTWC",
+          "type": "float",
+          "description": "Extinction water content, dimensionless.",
+          "tooltip": "Water content below which ET from the unsaturated zone ceases. Must be between THTR and THTS. Only used when UNSAT_ETWC is active."
+        },
+        {
+          "name": "HA",
+          "type": "float",
+          "description": "Air-entry potential (negative pressure head), in model length units.",
+          "tooltip": "The capillary pressure at which the soil begins to desaturate. Used with UNSAT_ETAE option for capillary-based ET calculation."
+        },
+        {
+          "name": "HROOT",
+          "type": "float",
+          "description": "Root potential (negative pressure head), in model length units.",
+          "tooltip": "The capillary pressure at plant roots. Used with UNSAT_ETAE option. Must be more negative than HA."
+        },
+        {
+          "name": "ROOTACT",
+          "type": "float",
+          "description": "Root activity function value, dimensionless.",
+          "tooltip": "Defines the distribution of root activity with depth. Used with UNSAT_ETAE option. Typical values range from 0.0 to 1.0."
+        }
+      ]
+    }
+  ]
+}

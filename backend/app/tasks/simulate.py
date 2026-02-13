@@ -2,9 +2,11 @@
 
 import asyncio
 import os
+import queue
 import shutil
 import subprocess
 import tempfile
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -486,14 +488,18 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
             publish(f"Running: {' '.join(cmd)}")
             publish("-" * 60)
 
-            # Start live result processing in parallel
-            live_task = None
+            # Start live result processing in a background thread (not Celery task,
+            # since concurrency=1 means a queued task can't run during simulation)
+            live_thread = None
             try:
-                from app.tasks.live_results import start_live_processing
-                live_task = start_live_processing(
-                    run_id, project_id, str(model_dir), model_type
+                from app.tasks.live_results import live_results_thread_fn
+                live_thread = threading.Thread(
+                    target=live_results_thread_fn,
+                    args=(run_id, project_id, str(model_dir), model_type),
+                    daemon=True,
                 )
-                publish("Live result processing started in background...")
+                live_thread.start()
+                publish("Live result processing started...")
             except Exception as e:
                 publish(f"Note: Live result processing not available: {e}")
 
@@ -509,26 +515,72 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                     bufsize=1,
                 )
 
-                output_lines = []
-                for line in iter(process.stdout.readline, ""):
-                    line = line.rstrip()
-                    output_lines.append(line)
-                    publish(line)
+                # Use a reader thread to drain stdout so the pipe never
+                # blocks MODFLOW while we do batched Redis I/O.
+                def _stdout_reader(pipe, q):
+                    try:
+                        for raw_line in iter(pipe.readline, ""):
+                            q.put(raw_line.rstrip())
+                    finally:
+                        q.put(None)  # sentinel
 
-                    # Check for cancellation via Redis key
-                    if redis_client.exists(f"cancel:{run_id}"):
-                        process.terminate()
-                        process.wait()
-                        run.status = RunStatus.CANCELLED
-                        run.error_message = "Cancelled by user"
-                        run.completed_at = datetime.utcnow()
-                        db.commit()
-                        publish("Simulation cancelled by user")
-                        publish("__STATUS__:cancelled")
-                        redis_client.delete(f"cancel:{run_id}")
-                        return {"status": "cancelled"}
+                stdout_q: queue.Queue = queue.Queue(maxsize=10000)
+                reader_thread = threading.Thread(
+                    target=_stdout_reader,
+                    args=(process.stdout, stdout_q),
+                    daemon=True,
+                )
+                reader_thread.start()
+
+                output_lines = []
+                cancel_check_counter = 0
+                eof = False
+                while not eof:
+                    # Drain available lines (up to 100 per batch)
+                    batch = []
+                    try:
+                        while len(batch) < 100:
+                            line = stdout_q.get(timeout=0.1)
+                            if line is None:
+                                eof = True
+                                break
+                            batch.append(line)
+                    except queue.Empty:
+                        pass
+
+                    if batch:
+                        output_lines.extend(batch)
+                        # Batched Redis operations — single round-trip
+                        pipe = redis_client.pipeline(transaction=False)
+                        for b_line in batch:
+                            pipe.publish(channel, b_line)
+                            pipe.rpush(history_key, b_line)
+                        pipe.expire(history_key, 86400)
+                        pipe.execute()
+
+                    # Check cancellation every ~500 lines instead of every line
+                    cancel_check_counter += len(batch)
+                    if cancel_check_counter >= 500:
+                        cancel_check_counter = 0
+                        if redis_client.exists(f"cancel:{run_id}"):
+                            process.terminate()
+                            process.wait()
+                            if live_thread is not None:
+                                live_thread.join(timeout=10)
+                            run.status = RunStatus.CANCELLED
+                            run.error_message = "Cancelled by user"
+                            run.completed_at = datetime.utcnow()
+                            db.commit()
+                            publish("Simulation cancelled by user")
+                            publish("__STATUS__:cancelled")
+                            redis_client.delete(f"cancel:{run_id}")
+                            return {"status": "cancelled"}
 
                 return_code = process.wait()
+
+                # Signal live results thread to stop and wait for it
+                if live_thread is not None:
+                    live_thread.join(timeout=10)
 
                 publish("-" * 60)
 

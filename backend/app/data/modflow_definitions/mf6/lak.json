@@ -1,0 +1,184 @@
+{
+  "package_name": "LAK",
+  "description": "Lake",
+  "file_extensions": [".lak"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling lake package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each lake.",
+          "tooltip": "One or more names of auxiliary variables read with each lake entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each lake.",
+          "tooltip": "When specified, each lake entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print lake input data to the listing file.",
+          "tooltip": "When specified, lake data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_STAGE",
+          "type": "keyword",
+          "description": "Keyword to print lake stage to the listing file.",
+          "tooltip": "When specified, the computed lake stage is printed to the listing file for each time step."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print lake flow rates to the listing file.",
+          "tooltip": "When specified, computed lake flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save lake flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, lake-aquifer flow exchange terms are written to the binary budget file."
+        },
+        {
+          "name": "STAGE FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing lake stage output.",
+          "tooltip": "Specifies the file name for saving computed lake stages over time."
+        },
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing detailed lake budget output.",
+          "tooltip": "Specifies the file name for saving the detailed lake budget including all inflows and outflows."
+        },
+        {
+          "name": "SURFDEP",
+          "type": "float",
+          "description": "Depth of the surface depression that must be filled before lake outflow occurs.",
+          "tooltip": "The depth of surface depressions around the lake that must fill before surface outflow can begin. Used to prevent unrealistic rapid lake stage changes. Default is 0.0."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Static lake data defining the physical properties of each lake.",
+      "variables": [
+        {
+          "name": "LAKENO",
+          "type": "integer",
+          "description": "Lake number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each lake, numbered from 1 to the total number of lakes."
+        },
+        {
+          "name": "STRT",
+          "type": "float",
+          "description": "Starting stage (water surface elevation) of the lake.",
+          "tooltip": "Initial lake stage at the beginning of the simulation. For steady-state simulations, serves as the initial guess."
+        },
+        {
+          "name": "NLAKECONN",
+          "type": "integer",
+          "description": "Number of GWF cells connected to this lake.",
+          "tooltip": "The number of aquifer cells that exchange water with this lake. Must match the number of CONNECTIONDATA entries for this lake."
+        },
+        {
+          "name": "AUX",
+          "type": "float_list",
+          "description": "Values for each auxiliary variable defined in OPTIONS.",
+          "tooltip": "One value for each auxiliary variable in the order they were defined."
+        },
+        {
+          "name": "BOUNDNAME",
+          "type": "string",
+          "description": "Text name for the lake boundary (up to 40 characters).",
+          "tooltip": "Optional name for the lake, used in budget reporting and observations. Only read if BOUNDNAMES is specified in OPTIONS."
+        }
+      ]
+    },
+    {
+      "name": "CONNECTIONDATA",
+      "description": "Lake-aquifer connection data defining how each lake cell connects to the groundwater model.",
+      "variables": [
+        {
+          "name": "LAKENO",
+          "type": "integer",
+          "description": "Lake number for which connections are specified.",
+          "tooltip": "The lake number from PACKAGEDATA to which this connection applies."
+        },
+        {
+          "name": "ICONN",
+          "type": "integer",
+          "description": "Connection number (sequential within each lake, one-based).",
+          "tooltip": "Sequential identifier for each lake-aquifer connection, numbered from 1 to NLAKECONN for this lake."
+        },
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the connected GWF cell.",
+          "tooltip": "Identifies the aquifer cell connected to the lake at this interface."
+        },
+        {
+          "name": "CLAKTYPE",
+          "type": "keyword_choice",
+          "choices": ["VERTICAL", "HORIZONTAL", "EMBEDDEDH", "EMBEDDEDV"],
+          "description": "Type of lake-aquifer connection.",
+          "tooltip": "VERTICAL for connections through the lake bottom. HORIZONTAL for connections through the lake sides. EMBEDDEDH for horizontal embedded lakes. EMBEDDEDV for vertical embedded lakes."
+        },
+        {
+          "name": "BEDLEAK",
+          "type": "float",
+          "description": "Lakebed leakance (hydraulic conductivity divided by bed thickness), in units of 1/time.",
+          "tooltip": "Controls the resistance to flow through the lakebed. Higher values allow more flow. Set to 0 for no-flow lakebed. Use NONE for no lakebed resistance (direct aquifer contact)."
+        },
+        {
+          "name": "BELEV",
+          "type": "float",
+          "description": "Bottom elevation of the lake-aquifer connection, in model length units.",
+          "tooltip": "The bottom elevation of this connection interface. For HORIZONTAL connections, this is the bottom of the connection face."
+        },
+        {
+          "name": "TELEV",
+          "type": "float",
+          "description": "Top elevation of the lake-aquifer connection, in model length units.",
+          "tooltip": "The top elevation of this connection interface. For HORIZONTAL connections, this is the top of the connection face."
+        },
+        {
+          "name": "CONNLEN",
+          "type": "float",
+          "description": "Distance between the lake and the connected cell center, in model length units.",
+          "tooltip": "The flow path length between the lake and the aquifer cell center. Used to compute the conductance of the connection."
+        },
+        {
+          "name": "CONNWIDTH",
+          "type": "float",
+          "description": "Width of the lake-aquifer connection perpendicular to flow, in model length units.",
+          "tooltip": "The cross-sectional width of the connection interface. Used with CONNLEN to compute the conductance."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying time-varying lake settings and boundary conditions.",
+      "variables": [
+        {
+          "name": "LAKENO",
+          "type": "integer",
+          "description": "Lake number for which settings are specified.",
+          "tooltip": "The lake number from PACKAGEDATA to which the following setting applies."
+        },
+        {
+          "name": "LAKSETTING",
+          "type": "keyword_value",
+          "options": ["STATUS", "STAGE", "RAINFALL", "EVAPORATION", "RUNOFF", "INFLOW", "WITHDRAWAL", "RATE", "AUXILIARYRECORD"],
+          "description": "Keyword and value pair specifying a time-varying property for the lake.",
+          "tooltip": "STATUS sets the lake state (ACTIVE, INACTIVE, CONSTANT). STAGE fixes the lake stage. RAINFALL adds direct precipitation (L/T). EVAPORATION removes water (L/T). RUNOFF adds overland flow (L3/T). INFLOW specifies tributary inflow (L3/T). WITHDRAWAL specifies water withdrawal (L3/T). RATE specifies an outlet flow rate."
+        }
+      ]
+    }
+  ]
+}

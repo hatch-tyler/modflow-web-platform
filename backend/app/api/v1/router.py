@@ -12,6 +12,9 @@ from app.api.v1.observations import router as observations_router
 from app.api.v1.zonebudget import router as zonebudget_router
 from app.api.v1.zonebudget import zone_def_router
 from app.api.v1.pest import router as pest_router
+from app.api.v1.convergence import router as convergence_router
+from app.api.v1.file_editor import router as file_editor_router
+from app.api.v1.modflow_docs import router as modflow_docs_router
 
 api_router = APIRouter()
 
@@ -25,3 +28,6 @@ api_router.include_router(observations_router)
 api_router.include_router(zonebudget_router)
 api_router.include_router(zone_def_router)
 api_router.include_router(pest_router)
+api_router.include_router(convergence_router)
+api_router.include_router(file_editor_router)
+api_router.include_router(modflow_docs_router)

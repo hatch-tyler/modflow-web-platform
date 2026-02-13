@@ -1,0 +1,178 @@
+{
+  "package_name": "MAW",
+  "description": "Multi-Aquifer Well",
+  "file_extensions": [".maw"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling multi-aquifer well package behavior and output.",
+      "variables": [
+        {
+          "name": "FLOWING_WELLS",
+          "type": "keyword",
+          "description": "Keyword to activate the flowing wells option, allowing wells to flow at the land surface when the head exceeds the well top.",
+          "tooltip": "When specified, wells that have a head above the specified flowing well elevation will discharge at a rate controlled by the flowing well conductance. Simulates artesian flowing wells."
+        },
+        {
+          "name": "SHUTDOWN_THETA",
+          "type": "float",
+          "description": "Value that defines the weight for smoothly reducing pumping when the water level drops near the bottom of the well.",
+          "tooltip": "Controls the smoothing function for reducing well pumping as the water level approaches the well bottom. Used to prevent abrupt changes in pumping rate. Typical values are 0.5 to 0.9."
+        },
+        {
+          "name": "SHUTDOWN_KAPPA",
+          "type": "float",
+          "description": "Value that defines the range over which the pumping shutdown occurs.",
+          "tooltip": "Defines the interval over which pumping transitions from full rate to zero as the well water level declines. Larger values provide a wider transition zone. Typical value is 0.0001."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print MAW input data to the listing file.",
+          "tooltip": "When specified, multi-aquifer well data is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_HEAD",
+          "type": "keyword",
+          "description": "Keyword to print computed well head to the listing file.",
+          "tooltip": "When specified, the computed head in each multi-aquifer well is printed to the listing file for each time step."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print MAW flow rates to the listing file.",
+          "tooltip": "When specified, flow rates for each well and well-aquifer connection are printed to the listing file."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save MAW flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, well-aquifer flow exchange terms are written to the binary budget file."
+        },
+        {
+          "name": "HEAD FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing well head output.",
+          "tooltip": "Specifies the file name for saving computed well heads over time. Used for post-processing well performance."
+        },
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing detailed MAW budget output.",
+          "tooltip": "Specifies the file name for saving the detailed well budget including pumping, aquifer exchange, and storage."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Static well data defining the physical properties of each multi-aquifer well.",
+      "variables": [
+        {
+          "name": "WELLNO",
+          "type": "integer",
+          "description": "Well number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each multi-aquifer well, numbered from 1 to the total number of wells."
+        },
+        {
+          "name": "RADIUS",
+          "type": "float",
+          "description": "Radius of the well bore, in model length units.",
+          "tooltip": "The physical radius of the well casing. Used to compute well storage volume and, for some conductance equations, the flow area between the well and the aquifer."
+        },
+        {
+          "name": "BOTTOM",
+          "type": "float",
+          "description": "Elevation of the bottom of the well, in model length units.",
+          "tooltip": "The bottom of the well screen or open interval. Defines the lowest point where flow can exchange between the well and the aquifer."
+        },
+        {
+          "name": "STRT",
+          "type": "float",
+          "description": "Starting head in the well at the beginning of the simulation.",
+          "tooltip": "Initial water level in the well. For steady-state simulations, serves as the initial guess. For transient simulations, used as the initial condition."
+        },
+        {
+          "name": "CONDEQN",
+          "type": "keyword_choice",
+          "choices": ["SPECIFIED", "THIEM", "SKIN", "CUMULATIVE", "MEAN"],
+          "description": "Equation type used to compute well-aquifer conductance.",
+          "tooltip": "SPECIFIED uses user-defined conductance. THIEM uses Thiem equation (based on cell dimensions). SKIN uses skin factor. CUMULATIVE computes cumulative transmissivity. MEAN uses mean transmissivity."
+        },
+        {
+          "name": "NGWFNODES",
+          "type": "integer",
+          "description": "Number of GWF model cells connected to this well.",
+          "tooltip": "The number of aquifer cells that the well is open to. Must match the number of CONNECTIONDATA entries for this well. Typically equals the number of layers the well penetrates."
+        }
+      ]
+    },
+    {
+      "name": "CONNECTIONDATA",
+      "description": "Well-aquifer connection data linking each well to its connected GWF cells.",
+      "variables": [
+        {
+          "name": "WELLNO",
+          "type": "integer",
+          "description": "Well number for which connections are specified.",
+          "tooltip": "The well number from PACKAGEDATA to which these connections apply."
+        },
+        {
+          "name": "ICON",
+          "type": "integer",
+          "description": "Connection number (sequential within each well, one-based).",
+          "tooltip": "Sequential identifier for each well-aquifer connection, numbered from 1 to NGWFNODES for this well."
+        },
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the connected GWF cell.",
+          "tooltip": "Identifies the aquifer cell connected to the well at this screen interval."
+        },
+        {
+          "name": "SCRN_TOP",
+          "type": "float",
+          "description": "Top elevation of the well screen for this connection, in model length units.",
+          "tooltip": "The top of the screened interval in this aquifer layer. Must be within or at the boundary of the connected cell."
+        },
+        {
+          "name": "SCRN_BOT",
+          "type": "float",
+          "description": "Bottom elevation of the well screen for this connection, in model length units.",
+          "tooltip": "The bottom of the screened interval in this aquifer layer. Must be less than SCRN_TOP."
+        },
+        {
+          "name": "HK_SKIN",
+          "type": "float",
+          "description": "Hydraulic conductivity of the skin (well damage zone) around the well, in model length per time units.",
+          "tooltip": "Hydraulic conductivity of the damaged or enhanced zone around the well bore. Used with the SKIN conductance equation. Lower values indicate more well damage."
+        },
+        {
+          "name": "RADIUS_SKIN",
+          "type": "float",
+          "description": "Radius of the skin zone around the well, in model length units.",
+          "tooltip": "The outer radius of the skin zone. Must be greater than the well RADIUS. The skin zone represents the area around the well affected by drilling or development."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying time-varying well settings.",
+      "variables": [
+        {
+          "name": "WELLNO",
+          "type": "integer",
+          "description": "Well number for which settings are specified.",
+          "tooltip": "The well number from PACKAGEDATA to which the following setting applies."
+        },
+        {
+          "name": "MAWSETTING",
+          "type": "keyword_value",
+          "options": ["STATUS", "RATE", "FLOWING_WELL", "RATE_SCALING", "HEAD_LIMIT"],
+          "description": "Keyword and value pair specifying a time-varying property for the well.",
+          "tooltip": "STATUS sets the well state (ACTIVE, INACTIVE, CONSTANT). RATE specifies the pumping rate (negative for extraction). FLOWING_WELL sets the flowing well elevation and conductance. RATE_SCALING defines the head-dependent pumping schedule. HEAD_LIMIT sets the minimum head below which pumping ceases."
+        }
+      ]
+    }
+  ]
+}

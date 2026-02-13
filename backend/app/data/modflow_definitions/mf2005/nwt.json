@@ -1,0 +1,271 @@
+{
+  "package_name": "NWT",
+  "description": "Newton Solver Package - Newton-Raphson formulation for solving nonlinear groundwater flow problems, particularly effective for unconfined conditions",
+  "file_extensions": [".nwt"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow-nwt/MODFLOW-NWT-Guide/nwt_newton_solver.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Newton solver parameters and options",
+      "variables": [
+        {
+          "name": "HEADTOL",
+          "position": 0,
+          "type": "float",
+          "description": "Maximum head change between outer iterations for convergence (L).",
+          "tooltip": "Convergence is achieved when the maximum head change between outer iterations is less than HEADTOL. Typical: 0.001 to 0.01."
+        },
+        {
+          "name": "FLUXTOL",
+          "position": 1,
+          "type": "float",
+          "description": "Maximum root-mean-squared flux difference for convergence (L^3/T).",
+          "tooltip": "Convergence also requires the maximum flux residual to be less than FLUXTOL. Typical: 100 to 500."
+        },
+        {
+          "name": "MAXITEROUT",
+          "position": 2,
+          "type": "integer",
+          "description": "Maximum number of outer (nonlinear Newton) iterations.",
+          "tooltip": "Maximum outer iterations allowed per time step. Typical: 100-200. Increase for highly nonlinear problems."
+        },
+        {
+          "name": "THICKFACT",
+          "position": 3,
+          "type": "float",
+          "description": "Portion of cell thickness used for smoothly adjusting storage and conductance when head is near cell bottom.",
+          "tooltip": "Fraction of cell thickness over which the smoothing function transitions. Typical: 0.00001 to 0.001. Smaller values give sharper transitions."
+        },
+        {
+          "name": "LINMETH",
+          "position": 4,
+          "type": "integer",
+          "description": "Linear solution method. 1=GMRES, 2=XMD (chi-MD).",
+          "tooltip": "1=GMRES (generalized minimum residual). 2=XMD (chi-MD direct solver). GMRES is typically more robust for large problems."
+        },
+        {
+          "name": "IPRNWT",
+          "position": 5,
+          "type": "integer",
+          "description": "Print flag for NWT solver convergence information. 0=print, 1=no print.",
+          "tooltip": "0=print convergence information to listing file each time step. 1=suppress solver printing."
+        },
+        {
+          "name": "IBOTAV",
+          "position": 6,
+          "type": "integer",
+          "description": "Flag to correct head relative to cell bottom for computing intercell transmissivity. 0=no correction, 1=correct.",
+          "tooltip": "If 1, head relative to the cell bottom is corrected when computing transmissivity between cells. Can improve results with large head gradients."
+        },
+        {
+          "name": "OPTIONS",
+          "position": 7,
+          "type": "string",
+          "optional": true,
+          "description": "Solver option: 'SPECIFIED' for user-specified solver parameters, 'SIMPLE', 'MODERATE', or 'COMPLEX' for predefined settings.",
+          "tooltip": "SIMPLE: suitable for simple problems. MODERATE: balanced. COMPLEX: aggressive settings for difficult problems. SPECIFIED: user provides all parameters in Dataset 2."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "SPECIFIED option parameters - nonlinear solver settings",
+      "condition": "OPTIONS == 'SPECIFIED'",
+      "variables": [
+        {
+          "name": "DBDTHETA",
+          "position": 0,
+          "type": "float",
+          "description": "Coefficient used to reduce the weight applied to head change between nonlinear iterations.",
+          "tooltip": "Ranges from 0.0 to 1.0. A value of 0.9 is typical. Used in the delta-bar-delta learning rate algorithm."
+        },
+        {
+          "name": "DBDKAPPA",
+          "position": 1,
+          "type": "float",
+          "description": "Coefficient used to increase the weight applied to head change between nonlinear iterations.",
+          "tooltip": "Ranges from 0.0 to 1.0. A value of 0.0001 is typical. Used in the delta-bar-delta learning rate algorithm."
+        },
+        {
+          "name": "DBDGAMMA",
+          "position": 2,
+          "type": "float",
+          "description": "Factor used to weight the head change for the previous and current iteration.",
+          "tooltip": "Ranges from 0.0 to 1.0. Typical value: 0.0. Controls momentum in the delta-bar-delta algorithm."
+        },
+        {
+          "name": "MOMFACT",
+          "position": 3,
+          "type": "float",
+          "description": "Momentum coefficient. 0=no momentum applied.",
+          "tooltip": "Ranges from 0.0 to 1.0. Typical: 0.1. Applies momentum to head changes between iterations to accelerate convergence."
+        },
+        {
+          "name": "BACKFLAG",
+          "position": 4,
+          "type": "integer",
+          "description": "Flag for residual-reduction backtracking. 0=no backtracking, >0=backtracking enabled.",
+          "tooltip": "If > 0, backtracking is performed when the residual increases between nonlinear iterations. Improves stability."
+        },
+        {
+          "name": "MAXBACKITER",
+          "position": 5,
+          "type": "integer",
+          "description": "Maximum number of backtracking iterations allowed per nonlinear iteration.",
+          "tooltip": "Maximum number of reductions in the head change vector. Typical: 50. Only used if BACKFLAG > 0."
+        },
+        {
+          "name": "BACKTOL",
+          "position": 6,
+          "type": "float",
+          "description": "Proportional decrease in residual required for backtracking to end.",
+          "tooltip": "Backtracking continues until the residual decreases by this fraction. Typical: 1.1 (10% reduction). Only used if BACKFLAG > 0."
+        },
+        {
+          "name": "BACKREDUCE",
+          "position": 7,
+          "type": "float",
+          "description": "Reduction factor for head change during backtracking.",
+          "tooltip": "Head change is multiplied by this factor during each backtracking step. Typical: 0.7. Only used if BACKFLAG > 0."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "GMRES linear solver parameters",
+      "condition": "LINMETH == 1",
+      "variables": [
+        {
+          "name": "MAXITINNER",
+          "position": 0,
+          "type": "integer",
+          "description": "Maximum number of inner (linear) iterations.",
+          "tooltip": "Maximum GMRES iterations per outer iteration. Typical: 50-100."
+        },
+        {
+          "name": "ILUMETHOD",
+          "position": 1,
+          "type": "integer",
+          "description": "ILU preconditioner method. 1=ILU with drop tolerance and target fill, 2=ILU(k) with level of fill.",
+          "tooltip": "1=ILU with drop tolerance (ILUT). 2=ILU with specified fill level. Method 2 is more predictable in memory usage."
+        },
+        {
+          "name": "LEVFILL",
+          "position": 2,
+          "type": "integer",
+          "description": "Fill level for ILU decomposition (method 2) or target number of fills per row (method 1).",
+          "tooltip": "For ILU method 2: level of fill (0=ILU(0), 1=ILU(1), etc.). For method 1: target fills per row. Typical: 1-5."
+        },
+        {
+          "name": "STOPTOL",
+          "position": 3,
+          "type": "float",
+          "description": "Convergence tolerance for the linear solver.",
+          "tooltip": "Linear solver stops when the relative residual is less than STOPTOL. Typical: 1.0E-10."
+        },
+        {
+          "name": "MSDR",
+          "position": 4,
+          "type": "integer",
+          "description": "Number of GMRES restart iterations.",
+          "tooltip": "GMRES is restarted every MSDR iterations. Typical: 5-15. Higher values use more memory but may converge faster."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "free",
+      "description": "XMD linear solver parameters",
+      "condition": "LINMETH == 2",
+      "variables": [
+        {
+          "name": "IACL",
+          "position": 0,
+          "type": "integer",
+          "description": "Acceleration method flag. 0=Conjugate Gradient, 1=ORTHOMIN, 2=Bi-CGSTAB.",
+          "tooltip": "0=CG (symmetric systems). 1=ORTHOMIN (general). 2=Bi-CGSTAB (general, often faster). 2 is recommended."
+        },
+        {
+          "name": "NORDER",
+          "position": 1,
+          "type": "integer",
+          "description": "Ordering scheme. 0=original ordering, 1=RCM ordering, 2=Minimum Degree ordering.",
+          "tooltip": "Reordering can significantly improve convergence. 1=Reverse Cuthill-McKee. 2=Minimum Degree. 0=no reordering."
+        },
+        {
+          "name": "LEVEL",
+          "position": 2,
+          "type": "integer",
+          "description": "Level of fill for ILU decomposition.",
+          "tooltip": "Level of fill for the incomplete factorization. Higher values use more memory but may improve convergence. Typical: 1-3."
+        },
+        {
+          "name": "NORTH",
+          "position": 3,
+          "type": "integer",
+          "description": "Number of orthogonalizations for ORTHOMIN method.",
+          "tooltip": "Only used when IACL=1. Higher values improve convergence at the cost of memory and computation. Typical: 2-7."
+        },
+        {
+          "name": "IREDSYS",
+          "position": 4,
+          "type": "integer",
+          "description": "Flag for applying reduced system preconditioning. 0=no, 1=yes.",
+          "tooltip": "If 1, uses reduced system preconditioning which can improve convergence for layered systems."
+        },
+        {
+          "name": "RRCTOLS",
+          "position": 5,
+          "type": "float",
+          "description": "Tolerance for detecting and removing inactive equations from the system.",
+          "tooltip": "Equations with diagonal entries less than RRCTOLS are removed. Typical: 0.0 (no removal). Use with care."
+        },
+        {
+          "name": "IDROPTOL",
+          "position": 6,
+          "type": "integer",
+          "description": "Flag for applying drop tolerance to ILU factorization. 0=no, 1=yes.",
+          "tooltip": "If 1, small entries in the ILU factorization are dropped based on EPSRN. Reduces memory but may slow convergence."
+        },
+        {
+          "name": "EPSRN",
+          "position": 7,
+          "type": "float",
+          "description": "Drop tolerance for ILU factorization.",
+          "tooltip": "Entries smaller than EPSRN times the row norm are dropped. Typical: 1.0E-4. Only used when IDROPTOL=1."
+        },
+        {
+          "name": "HCLOSEXMD",
+          "position": 8,
+          "type": "float",
+          "description": "Head closure criterion for the inner (linear) iterations.",
+          "tooltip": "Linear solver converges when head change is less than HCLOSEXMD. Typical: 1.0E-4."
+        },
+        {
+          "name": "MXITERXMD",
+          "position": 9,
+          "type": "integer",
+          "description": "Maximum number of inner iterations for XMD.",
+          "tooltip": "Maximum number of linear iterations per outer iteration. Typical: 50-100."
+        }
+      ]
+    }
+  ]
+}

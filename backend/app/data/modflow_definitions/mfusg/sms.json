@@ -1,0 +1,258 @@
+{
+  "package_name": "SMS",
+  "description": "Sparse Matrix Solver Package - Provides the linear and nonlinear solution algorithms for MODFLOW-USG unstructured grids",
+  "file_extensions": [".sms"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Solver control parameters",
+      "variables": [
+        {
+          "name": "HCLOSE",
+          "position": 0,
+          "type": "float",
+          "description": "Head change criterion for convergence of outer (nonlinear) iterations (L).",
+          "tooltip": "Outer iteration head closure criterion. Convergence when max head change < HCLOSE. Typical: 0.001 to 0.01."
+        },
+        {
+          "name": "HICLOSE",
+          "position": 1,
+          "type": "float",
+          "description": "Head change criterion for convergence of inner (linear) iterations (L).",
+          "tooltip": "Inner iteration head closure criterion. Linear solver converges when max head change < HICLOSE. Typical: 0.0001 to 0.001."
+        },
+        {
+          "name": "MXITER",
+          "position": 2,
+          "type": "integer",
+          "description": "Maximum number of outer (nonlinear) iterations per time step.",
+          "tooltip": "Maximum outer iterations. For steady-state problems or highly nonlinear problems, use 100-500."
+        },
+        {
+          "name": "ITER1",
+          "position": 3,
+          "type": "integer",
+          "description": "Maximum number of inner (linear) iterations per outer iteration.",
+          "tooltip": "Maximum inner iterations within each outer iteration. Typical: 50-200."
+        },
+        {
+          "name": "IPRSMS",
+          "position": 4,
+          "type": "integer",
+          "description": "Print interval for solver convergence. 0=print at end, >0=print every IPRSMS outer iterations.",
+          "tooltip": "Controls frequency of solver convergence output to listing file. 0=only final. 1=every iteration."
+        },
+        {
+          "name": "NONLINMETH",
+          "position": 5,
+          "type": "integer",
+          "description": "Nonlinear solution method. 0=Picard, 1=Newton, 2=Picard with backtracking, 3=Newton with backtracking.",
+          "tooltip": "0=Picard iteration (standard). 1=Newton-Raphson (better for unconfined). 2=Picard with backtracking. 3=Newton with backtracking (most robust)."
+        },
+        {
+          "name": "LINMETH",
+          "position": 6,
+          "type": "integer",
+          "description": "Linear solution method. 1=XMD (default), 2=PCGU (preconditioned conjugate gradient with ILU).",
+          "tooltip": "1=XMD direct/iterative solver. 2=PCGU (unstructured preconditioned conjugate gradient). PCGU is generally preferred for large problems."
+        },
+        {
+          "name": "OPTIONS",
+          "position": 7,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keywords: SIMPLE, MODERATE, COMPLEX for predefined settings.",
+          "tooltip": "SIMPLE=basic settings for easy problems. MODERATE=balanced. COMPLEX=aggressive for difficult convergence. Overrides default solver settings."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Nonlinear solver parameters",
+      "condition": "NONLINMETH >= 1",
+      "variables": [
+        {
+          "name": "THETA",
+          "position": 0,
+          "type": "float",
+          "description": "Coefficient used to reduce weight for head change between nonlinear iterations. Range: 0-1.",
+          "tooltip": "Reduction factor for delta-bar-delta learning rate. Typical: 0.7-0.9. Used with Newton and Picard methods."
+        },
+        {
+          "name": "AKAPPA",
+          "position": 1,
+          "type": "float",
+          "description": "Coefficient used to increase weight for head change between nonlinear iterations. Range: 0-1.",
+          "tooltip": "Increase factor for delta-bar-delta. Typical: 0.001-0.1."
+        },
+        {
+          "name": "GAMMA",
+          "position": 2,
+          "type": "float",
+          "description": "History or memory term factor. Range: 0-1.",
+          "tooltip": "Momentum factor. 0=no momentum. Typical: 0.0-0.2."
+        },
+        {
+          "name": "AMOMENTUM",
+          "position": 3,
+          "type": "float",
+          "description": "Momentum term coefficient. Range: 0-1.",
+          "tooltip": "Applied to head changes between iterations to accelerate convergence. Typical: 0.0-0.1."
+        },
+        {
+          "name": "NUMTRACK",
+          "position": 4,
+          "type": "integer",
+          "description": "Maximum number of backtracking iterations. 0=no backtracking.",
+          "tooltip": "Number of backtracking iterations if residual increases. 0=disabled. Typical: 10-50 when backtracking is used."
+        },
+        {
+          "name": "BTOL",
+          "position": 5,
+          "type": "float",
+          "description": "Residual ratio tolerance for backtracking. Backtracking stops when ratio < BTOL.",
+          "tooltip": "Tolerance for the residual ratio during backtracking. Typical: 1.05-1.5. Only used if NUMTRACK > 0."
+        },
+        {
+          "name": "BREDUC",
+          "position": 6,
+          "type": "float",
+          "description": "Head change reduction factor during backtracking. Range: 0-1.",
+          "tooltip": "Factor by which head change is reduced during each backtracking step. Typical: 0.1-0.7. Only used if NUMTRACK > 0."
+        },
+        {
+          "name": "RESLIM",
+          "position": 7,
+          "type": "float",
+          "description": "Residual limit for initiating backtracking. Backtracking starts when residual > RESLIM.",
+          "tooltip": "Threshold residual for activating backtracking. Typical: 100-1000. Only used if NUMTRACK > 0."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "XMD linear solver parameters",
+      "condition": "LINMETH == 1",
+      "variables": [
+        {
+          "name": "IACL",
+          "position": 0,
+          "type": "integer",
+          "description": "Acceleration method. 0=Conjugate Gradient, 1=ORTHOMIN, 2=Bi-CGSTAB.",
+          "tooltip": "0=CG (symmetric only). 1=ORTHOMIN. 2=Bi-CGSTAB (general, recommended). For Newton method, use 1 or 2."
+        },
+        {
+          "name": "NORDER",
+          "position": 1,
+          "type": "integer",
+          "description": "Ordering scheme. 0=original, 1=RCM, 2=Minimum Degree.",
+          "tooltip": "Node reordering for ILU. 0=no reordering. 1=Reverse Cuthill-McKee. 2=Minimum Degree. Reordering generally improves convergence."
+        },
+        {
+          "name": "LEVEL",
+          "position": 2,
+          "type": "integer",
+          "description": "Level of fill for ILU decomposition.",
+          "tooltip": "Fill level for ILU preconditioner. 0=ILU(0). Higher values use more memory but may improve convergence. Typical: 1-5."
+        },
+        {
+          "name": "NORTH",
+          "position": 3,
+          "type": "integer",
+          "description": "Number of orthogonalizations for ORTHOMIN.",
+          "tooltip": "Only used when IACL=1. Number of vectors stored for orthogonalization. Typical: 2-7."
+        },
+        {
+          "name": "IREDSYS",
+          "position": 4,
+          "type": "integer",
+          "description": "Reduced system preconditioning flag. 0=no, 1=yes.",
+          "tooltip": "1=use reduced system preconditioning. Can improve convergence for layered systems."
+        },
+        {
+          "name": "RRCTOL",
+          "position": 5,
+          "type": "float",
+          "description": "Tolerance for detecting and removing inactive equations.",
+          "tooltip": "Equations with diagonal entries less than RRCTOL are removed. 0=no removal. Use with caution."
+        },
+        {
+          "name": "IDROPTOL",
+          "position": 6,
+          "type": "integer",
+          "description": "Drop tolerance flag for ILU. 0=no drop tolerance, 1=apply drop tolerance.",
+          "tooltip": "1=small entries in ILU factorization are dropped. Reduces memory but may slow convergence."
+        },
+        {
+          "name": "EPSRN",
+          "position": 7,
+          "type": "float",
+          "description": "Drop tolerance for ILU factorization.",
+          "tooltip": "Entries smaller than EPSRN * row norm are dropped. Typical: 1.0E-4. Only used when IDROPTOL=1."
+        }
+      ]
+    },
+    {
+      "number": "3b",
+      "format": "free",
+      "description": "PCGU linear solver parameters",
+      "condition": "LINMETH == 2",
+      "variables": [
+        {
+          "name": "IPC",
+          "position": 0,
+          "type": "integer",
+          "description": "Preconditioner option. 0=no preconditioner, 1=Jacobi, 2=ILU(0), 3=MILU(0), 4=ILU(T).",
+          "tooltip": "0=none. 1=Jacobi (simple, low memory). 2=ILU(0) (good balance). 3=Modified ILU(0) (more robust). 4=ILU with threshold (most robust)."
+        },
+        {
+          "name": "ISCL",
+          "position": 1,
+          "type": "integer",
+          "description": "Matrix scaling flag. 0=no scaling, 1=symmetric scaling, 2=L2 norm scaling.",
+          "tooltip": "0=no matrix scaling. 1=symmetric scaling by diagonal. 2=L2 norm scaling. Scaling can significantly improve convergence."
+        },
+        {
+          "name": "IORD",
+          "position": 2,
+          "type": "integer",
+          "description": "Node ordering flag. 0=original, 1=RCM, 2=Minimum Degree.",
+          "tooltip": "0=no reordering. 1=Reverse Cuthill-McKee. 2=Minimum Degree. Reordering often helps convergence."
+        },
+        {
+          "name": "RCLOSEPCGU",
+          "position": 3,
+          "type": "float",
+          "description": "Residual closure criterion for the PCGU solver.",
+          "tooltip": "Inner iterations converge when the L2 norm of the residual is less than RCLOSEPCGU. Typical: 0.01-1.0."
+        },
+        {
+          "name": "RELAXPCGU",
+          "position": 4,
+          "type": "float",
+          "optional": true,
+          "description": "Relaxation factor for MILU(0) preconditioner.",
+          "tooltip": "Relaxation parameter used with IPC=3 (MILU). Typical: 0.97-0.99. Only used with MILU(0)."
+        }
+      ]
+    }
+  ]
+}

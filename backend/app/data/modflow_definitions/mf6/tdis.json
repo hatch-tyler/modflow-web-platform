@@ -1,0 +1,63 @@
+{
+  "package_name": "TDIS",
+  "description": "Temporal Discretization",
+  "file_extensions": [".tdis"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling time units and simulation start date.",
+      "variables": [
+        {
+          "name": "TIME_UNITS",
+          "type": "keyword_choice",
+          "choices": ["UNKNOWN", "SECONDS", "MINUTES", "HOURS", "DAYS", "YEARS"],
+          "description": "Time units used throughout the simulation.",
+          "tooltip": "Specifies the time units for all stress period lengths and time step calculations. Must be consistent with all input data. DAYS is the most common choice."
+        },
+        {
+          "name": "START_DATE_TIME",
+          "type": "string",
+          "description": "Starting date and time for the simulation in ISO 8601 format.",
+          "tooltip": "Optional calendar reference date for the simulation start. Used for labeling output but does not affect calculations. Format example: 2020-01-01T00:00:00."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Dimensions defining the number of stress periods.",
+      "variables": [
+        {
+          "name": "NPER",
+          "type": "integer",
+          "description": "Number of stress periods in the simulation.",
+          "tooltip": "Defines how many stress periods the simulation contains. Each stress period can have different boundary conditions, sources, and sinks. Must be greater than or equal to 1."
+        }
+      ]
+    },
+    {
+      "name": "PERIODDATA",
+      "description": "Stress period timing data defining the length, number of time steps, and time step multiplier for each stress period.",
+      "variables": [
+        {
+          "name": "PERLEN",
+          "type": "float",
+          "description": "Length of the stress period, in the time units specified in OPTIONS.",
+          "tooltip": "Duration of the stress period. For steady-state stress periods, PERLEN can be any positive value (commonly 1.0). For transient periods, it defines the actual simulated time."
+        },
+        {
+          "name": "NSTP",
+          "type": "integer",
+          "description": "Number of time steps within the stress period.",
+          "tooltip": "The stress period is divided into NSTP time steps. More time steps provide finer temporal resolution but increase computation time. Minimum is 1."
+        },
+        {
+          "name": "TSMULT",
+          "type": "float",
+          "description": "Time step multiplier for geometric progression of time step lengths.",
+          "tooltip": "Each successive time step is TSMULT times the previous one. A value of 1.0 produces equal time steps. Values > 1.0 create progressively longer steps (common: 1.2 to 1.5). Must be > 0."
+        }
+      ]
+    }
+  ]
+}

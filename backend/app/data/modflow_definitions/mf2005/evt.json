@@ -1,0 +1,143 @@
+{
+  "package_name": "EVT",
+  "description": "Evapotranspiration Package - Simulates the effects of plant transpiration and direct evaporation by removing water from the saturated groundwater regime",
+  "file_extensions": [".evt"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/evt.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "ET option and output unit",
+      "variables": [
+        {
+          "name": "NEVTOP",
+          "position": 0,
+          "type": "integer",
+          "description": "ET option code. 1=ET from top layer only, 2=ET from layer specified by IEVT, 3=ET from highest active cell.",
+          "tooltip": "1=ET removed from layer 1 only. 2=ET removed from layer specified by IEVT array. 3=ET removed from highest active cell in each column."
+        },
+        {
+          "name": "IEVTCB",
+          "position": 1,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell ET flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, cell-by-cell ET flow terms saved to binary file. If 0, no cell-by-cell output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period ET flags",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "INSURF",
+          "position": 0,
+          "type": "integer",
+          "description": "Flag for reading ET surface array. >=0=read new SURF, <0=reuse previous.",
+          "tooltip": "If >= 0, a new ET surface elevation array is read. If < 0, reuse from previous stress period."
+        },
+        {
+          "name": "INEVTR",
+          "position": 1,
+          "type": "integer",
+          "description": "Flag for reading maximum ET rate array. >=0=read new EVTR, <0=reuse previous.",
+          "tooltip": "If >= 0, a new maximum ET rate array is read. If < 0, reuse from previous stress period."
+        },
+        {
+          "name": "INEXDP",
+          "position": 2,
+          "type": "integer",
+          "description": "Flag for reading extinction depth array. >=0=read new EXDP, <0=reuse previous.",
+          "tooltip": "If >= 0, a new extinction depth array is read. If < 0, reuse from previous stress period."
+        },
+        {
+          "name": "INIEVT",
+          "position": 3,
+          "type": "integer",
+          "description": "Flag for reading ET layer indicator. >=0=read new IEVT, <0=reuse previous. Only if NEVTOP=2.",
+          "tooltip": "If >= 0, a new layer indicator array is read. If < 0, reuse from previous. Only read when NEVTOP=2."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "ET surface elevation array",
+      "condition": "INSURF >= 0",
+      "variables": [
+        {
+          "name": "SURF",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Elevation of the ET surface (L). ET occurs at the maximum rate when the water table is at or above this elevation.",
+          "tooltip": "2D array of ET surface elevations. Typically set to land surface elevation. ET rate is maximum when head equals SURF."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Maximum ET rate array",
+      "condition": "INEVTR >= 0",
+      "variables": [
+        {
+          "name": "EVTR",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Maximum evapotranspiration flux rate (L/T).",
+          "tooltip": "2D array of maximum ET rate. Applied when head is at or above the ET surface. ET decreases linearly to zero at the extinction depth."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "array",
+      "description": "Extinction depth array",
+      "condition": "INEXDP >= 0",
+      "variables": [
+        {
+          "name": "EXDP",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "ET extinction depth (L) below the ET surface.",
+          "tooltip": "2D array of extinction depths. ET ceases when the water table drops below SURF - EXDP. Typical values: 1-5 meters depending on vegetation."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "array",
+      "description": "ET layer indicator array",
+      "condition": "NEVTOP == 2 and INIEVT >= 0",
+      "variables": [
+        {
+          "name": "IEVT",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Layer number from which ET is removed for each vertical column (1-based).",
+          "tooltip": "2D array specifying which layer ET is applied to at each column location. Only read when NEVTOP=2."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "package_name": "HFB",
+  "description": "Horizontal Flow Barrier",
+  "file_extensions": [".hfb"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "PERIOD",
+      "description": "Stress period data defining horizontal flow barrier locations and hydraulic characteristics.",
+      "variables": [
+        {
+          "name": "CELLID1",
+          "type": "cell_id",
+          "description": "Cell identifier for the first cell adjacent to the barrier (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the first of two adjacent cells separated by the horizontal flow barrier. The barrier is placed on the shared face between CELLID1 and CELLID2."
+        },
+        {
+          "name": "CELLID2",
+          "type": "cell_id",
+          "description": "Cell identifier for the second cell adjacent to the barrier (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the second of two adjacent cells separated by the horizontal flow barrier. Must be a neighbor of CELLID1."
+        },
+        {
+          "name": "HYDCHR",
+          "type": "float",
+          "description": "Hydraulic characteristic of the barrier, in units of 1/time (hydraulic conductivity divided by barrier width).",
+          "tooltip": "Controls the resistance to flow across the barrier. Lower values indicate more effective barriers. Computed as K_barrier / width_barrier. A value of 0 creates a complete barrier to flow. Can be changed each stress period."
+        }
+      ]
+    }
+  ]
+}

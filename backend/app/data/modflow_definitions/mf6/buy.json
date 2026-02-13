@@ -1,0 +1,68 @@
+{
+  "package_name": "BUY",
+  "description": "Buoyancy",
+  "file_extensions": [".buy"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling buoyancy package formulation.",
+      "variables": [
+        {
+          "name": "HHFORMULATION_RHS",
+          "type": "keyword",
+          "description": "Keyword to add the variable-density head formulation terms to the right-hand side of the flow equation.",
+          "tooltip": "When specified, the density-dependent head terms are placed on the right-hand side of the equation rather than in the coefficient matrix. This produces a symmetric matrix that can be solved with CG instead of BICGSTAB, potentially improving performance."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Dimensions defining the number of density species.",
+      "variables": [
+        {
+          "name": "NRHOSPECIES",
+          "type": "integer",
+          "description": "Number of species used to calculate fluid density.",
+          "tooltip": "The total number of chemical species that contribute to fluid density variations. Each species has its own density-concentration relationship defined in PACKAGEDATA."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Density species data defining the relationship between concentration and fluid density.",
+      "variables": [
+        {
+          "name": "IRHOSPEC",
+          "type": "integer",
+          "description": "Species number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each density species, numbered from 1 to NRHOSPECIES."
+        },
+        {
+          "name": "DRHODC",
+          "type": "float",
+          "description": "Slope of the density-concentration relationship (change in density per unit change in concentration).",
+          "tooltip": "The linear coefficient relating concentration change to density change: rho = rho_ref + DRHODC * (C - CRHOREF). For seawater, DRHODC is approximately 0.7143 kg/m3 per kg/m3 of TDS."
+        },
+        {
+          "name": "CRHOREF",
+          "type": "float",
+          "description": "Reference concentration for the density-concentration relationship.",
+          "tooltip": "The concentration at which the fluid density equals the reference density. Typically set to 0 for freshwater. For seawater problems, this is the freshwater concentration."
+        },
+        {
+          "name": "MODELNAME",
+          "type": "string",
+          "description": "Name of the GWT (Groundwater Transport) model providing concentration values.",
+          "tooltip": "The name of the transport model that computes concentrations for this species. Must match a GWT model name defined in the simulation name file."
+        },
+        {
+          "name": "AUXSPECIESNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable in the GWF model that contains concentration values for this species.",
+          "tooltip": "Alternative to MODELNAME. Specifies the name of an auxiliary variable in a GWF stress package that contains concentration values. Use this when concentrations are provided directly rather than by a transport model."
+        }
+      ]
+    }
+  ]
+}

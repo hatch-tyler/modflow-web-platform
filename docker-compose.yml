@@ -42,12 +42,14 @@ services:
     networks:
       - modflow-network
     restart: unless-stopped
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=1536
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 2G
         reservations:
-          memory: 128M
+          memory: 256M
 
   # =============================================================================
   # Backend API (FastAPI)

@@ -1,0 +1,319 @@
+{
+  "package_name": "LPF",
+  "description": "Layer-Property Flow Package - Specifies hydraulic properties of model layers for the finite-difference groundwater flow equation",
+  "file_extensions": [".lpf"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/lpf.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Layer-property flow flags and options",
+      "variables": [
+        {
+          "name": "ILPFCB",
+          "position": 0,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, cell-by-cell flow terms are written to the specified unit number. If 0, no cell-by-cell flow output."
+        },
+        {
+          "name": "HDRY",
+          "position": 1,
+          "type": "float",
+          "description": "Head assigned to cells that are converted to dry during a simulation.",
+          "tooltip": "When a convertible cell goes dry, this value is assigned as its head. Common value: -1.0E+30. Should be a very distinctive value."
+        },
+        {
+          "name": "NPLPF",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of LPF parameters. Currently must be 0.",
+          "tooltip": "Number of LPF parameters defined through the Parameter Value file. Typically set to 0."
+        },
+        {
+          "name": "STORAGECOEFFICIENT",
+          "position": 3,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates SS is read as storage coefficient rather than specific storage.",
+          "tooltip": "When specified, SS values are read as storage coefficient (SS * thickness) instead of specific storage."
+        },
+        {
+          "name": "CONSTANTCV",
+          "position": 4,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates vertical conductance between cells is constant regardless of head changes.",
+          "tooltip": "When specified, vertical conductance is not adjusted when the head in a cell changes. Simplifies nonlinear behavior."
+        },
+        {
+          "name": "THICKSTRT",
+          "position": 5,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates that layers with LAYTYP>0 are confined if head > cell top, and the starting head determines thickness.",
+          "tooltip": "Cells with starting head above cell top are treated as confined, using initial thickness for transmissivity."
+        },
+        {
+          "name": "NOCVCORRECTION",
+          "position": 6,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates vertical conductance correction is not applied when dewatered.",
+          "tooltip": "Suppresses the correction to vertical conductance when the head in an overlying cell falls below the bottom of that cell."
+        },
+        {
+          "name": "NOVFC",
+          "position": 7,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates vertical flow correction is not applied.",
+          "tooltip": "Suppresses vertical flow corrections under dewatered conditions. Can improve convergence in some cases."
+        },
+        {
+          "name": "NOPARCHECK",
+          "position": 8,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates that parameter definitions are not checked for layer compatibility.",
+          "tooltip": "Disables checking of parameter definitions against model layer types. Use with caution."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Layer type flags",
+      "variables": [
+        {
+          "name": "LAYTYP",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Layer type for each layer. 0=confined, >0=convertible (unconfined/confined).",
+          "tooltip": "One value per layer. 0 means confined (transmissivity constant). >0 means convertible (transmissivity varies with saturated thickness). <0 means convertible with THICKSTRT option."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Interblock transmissivity averaging method",
+      "variables": [
+        {
+          "name": "LAYAVG",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Interblock transmissivity averaging method. 0=harmonic mean, 1=logarithmic mean, 2=arithmetic/logarithmic mean.",
+          "tooltip": "One value per layer. 0=harmonic mean (default, most common), 1=logarithmic mean, 2=arithmetic mean of saturated thickness and logarithmic mean of hydraulic conductivity."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "free",
+      "description": "Horizontal anisotropy flag",
+      "variables": [
+        {
+          "name": "CHANI",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NLAY"],
+          "description": "Horizontal anisotropy flag/value. >0=ratio of Ky/Kx (constant for layer), <=0=HANI array is read for the layer.",
+          "tooltip": "One value per layer. If positive, it is the anisotropy ratio applied uniformly. If zero or negative, a 2D HANI array is read for that layer."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "free",
+      "description": "Vertical hydraulic conductivity flag",
+      "variables": [
+        {
+          "name": "LAYVKA",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Flag for each layer indicating how VKA is specified. 0=VKA is vertical K, nonzero=VKA is ratio of Kh/Kv.",
+          "tooltip": "One value per layer. 0 means VKA values are vertical hydraulic conductivity. Nonzero means VKA values are the ratio of horizontal to vertical K."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "free",
+      "description": "Wetting capability flag",
+      "variables": [
+        {
+          "name": "LAYWET",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Flag for each layer indicating whether wetting is active. 0=wetting inactive, nonzero=wetting active.",
+          "tooltip": "One value per layer. Wetting is only allowed for convertible layers (LAYTYP > 0). Must be 0 for confined layers."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "free",
+      "description": "Wetting parameters (read if any LAYWET is nonzero)",
+      "condition": "any LAYWET != 0",
+      "variables": [
+        {
+          "name": "WETFCT",
+          "position": 0,
+          "type": "float",
+          "description": "Factor used to calculate head when a cell is converted from dry to wet.",
+          "tooltip": "Head at newly wetted cell = BOT + WETFCT * (wetting threshold). Common value: 0.1."
+        },
+        {
+          "name": "IWETIT",
+          "position": 1,
+          "type": "integer",
+          "description": "Iteration interval for attempting to wet dry cells.",
+          "tooltip": "Wetting is attempted every IWETIT iterations. Common value: 1 (check every iteration)."
+        },
+        {
+          "name": "IHDWET",
+          "position": 2,
+          "type": "integer",
+          "description": "Flag controlling the equation used to set initial head at wetted cells. 0=use equation 5a, nonzero=use equation 5b.",
+          "tooltip": "0: h = BOT + WETFCT*(head_neighbor - BOT). Nonzero: h = BOT + WETFCT*THRESH."
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "format": "array",
+      "description": "Horizontal hydraulic conductivity",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "HK",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Horizontal hydraulic conductivity along rows (Kx) for each cell.",
+          "tooltip": "2D array of horizontal hydraulic conductivity (L/T). Read for each layer. Values must be > 0 for active cells."
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "format": "array",
+      "description": "Horizontal anisotropy array",
+      "condition": "CHANI <= 0 for the layer",
+      "repeat": "layers where CHANI <= 0",
+      "variables": [
+        {
+          "name": "HANI",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Ratio of hydraulic conductivity along columns to Kx for each cell.",
+          "tooltip": "2D array of anisotropy ratios (Ky/Kx). Only read for layers where CHANI <= 0. Values typically range from 0.1 to 1.0."
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "format": "array",
+      "description": "Vertical hydraulic conductivity or ratio",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "VKA",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Vertical hydraulic conductivity or ratio of Kh/Kv, depending on LAYVKA.",
+          "tooltip": "2D array read for each layer. If LAYVKA=0, values are vertical K (L/T). If LAYVKA!=0, values are the ratio Kh/Kv."
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "format": "array",
+      "description": "Specific storage (transient simulations)",
+      "condition": "any stress period is transient",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "SS",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Specific storage for each cell (1/L), or storage coefficient if STORAGECOEFFICIENT option is set.",
+          "tooltip": "2D array read for each layer. Typical values: 1e-6 to 1e-4 (1/L). Only read if there are transient stress periods."
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "format": "array",
+      "description": "Specific yield (transient, convertible layers)",
+      "condition": "transient and LAYTYP != 0",
+      "repeat": "convertible layers",
+      "variables": [
+        {
+          "name": "SY",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Specific yield for each cell (dimensionless).",
+          "tooltip": "2D array read for convertible layers in transient simulations. Typical values: 0.01 to 0.30. Represents drainable porosity."
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "format": "array",
+      "description": "Vertical conductivity of confining bed",
+      "condition": "LAYCBD != 0 for the layer",
+      "repeat": "layers with confining beds",
+      "variables": [
+        {
+          "name": "VKCB",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Vertical hydraulic conductivity of the quasi-3D confining bed below the layer.",
+          "tooltip": "2D array read for layers that have a confining bed (LAYCBD != 0). Units are L/T."
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "format": "array",
+      "description": "Wetting threshold array",
+      "condition": "LAYWET != 0 and LAYTYP != 0",
+      "repeat": "wettable layers",
+      "variables": [
+        {
+          "name": "WETDRY",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Wetting threshold and direction flag. |WETDRY| is the wetting threshold. Sign indicates direction: positive=only wettable from below, negative=wettable from below and horizontally.",
+          "tooltip": "2D array for layers with wetting active. The absolute value is the head threshold. If positive, cell can only be wetted by the cell below; if negative, can also be wetted by horizontal neighbors."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "package_name": "HFB",
+  "description": "Horizontal-Flow Barrier Package - Simulates thin, vertical, low-permeability features that impede horizontal groundwater flow",
+  "file_extensions": [".hfb", ".hfb6"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/hfb6.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "HFB parameters and dimensions",
+      "variables": [
+        {
+          "name": "NPHFB",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of HFB parameters. 0=no parameters used.",
+          "tooltip": "Number of named parameters for the HFB package. Typically 0 for direct specification."
+        },
+        {
+          "name": "MXFB",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of horizontal-flow barrier entries.",
+          "tooltip": "Maximum total number of barrier cells (including those defined through parameters). Determines memory allocation."
+        },
+        {
+          "name": "NHFBNP",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of HFB entries not defined by parameters.",
+          "tooltip": "Number of barrier cell entries that are directly specified (not through parameter definitions). Read in Dataset 2."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Horizontal-flow barrier data",
+      "repeat": "NHFBNP",
+      "variables": [
+        {
+          "name": "Layer",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number of the barrier (1-based).",
+          "tooltip": "Layer containing the horizontal-flow barrier. 1-based index."
+        },
+        {
+          "name": "IROW1",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number of the first cell adjacent to the barrier (1-based).",
+          "tooltip": "Row of the first of two adjacent cells separated by the barrier."
+        },
+        {
+          "name": "ICOL1",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number of the first cell adjacent to the barrier (1-based).",
+          "tooltip": "Column of the first of two adjacent cells separated by the barrier."
+        },
+        {
+          "name": "IROW2",
+          "position": 3,
+          "type": "integer",
+          "description": "Row number of the second cell adjacent to the barrier (1-based).",
+          "tooltip": "Row of the second of two adjacent cells separated by the barrier. Must be adjacent to cell 1."
+        },
+        {
+          "name": "ICOL2",
+          "position": 4,
+          "type": "integer",
+          "description": "Column number of the second cell adjacent to the barrier (1-based).",
+          "tooltip": "Column of the second of two adjacent cells separated by the barrier. Must be adjacent to cell 1."
+        },
+        {
+          "name": "HYDCHR",
+          "position": 5,
+          "type": "float",
+          "description": "Hydraulic characteristic of the barrier (1/T). Equals K_barrier / thickness_barrier.",
+          "tooltip": "Hydraulic characteristic = barrier hydraulic conductivity / barrier thickness. Lower values = greater barrier effect. Units: 1/T."
+        }
+      ]
+    }
+  ]
+}

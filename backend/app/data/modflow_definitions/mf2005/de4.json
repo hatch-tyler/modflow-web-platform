@@ -1,0 +1,99 @@
+{
+  "package_name": "DE4",
+  "description": "Direct Solution (DE4) Solver Package - Solves the finite-difference equations using a banded Gaussian elimination algorithm",
+  "file_extensions": [".de4"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/de4.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Iteration parameters and bandwidth",
+      "variables": [
+        {
+          "name": "ITMX",
+          "position": 0,
+          "type": "integer",
+          "description": "Maximum number of outer iterations per time step.",
+          "tooltip": "Maximum outer iterations. For linear problems (all confined), 1 is sufficient. For nonlinear problems, use 10-50."
+        },
+        {
+          "name": "MXUP",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of equations in the upper part of the equations to be solved.",
+          "tooltip": "Typically set to 0 to let MODFLOW compute automatically. Used for memory allocation."
+        },
+        {
+          "name": "MXLOW",
+          "position": 2,
+          "type": "integer",
+          "description": "Maximum number of equations in the lower part of the equations to be solved.",
+          "tooltip": "Typically set to 0 to let MODFLOW compute automatically. Used for memory allocation."
+        },
+        {
+          "name": "MXBW",
+          "position": 3,
+          "type": "integer",
+          "description": "Maximum bandwidth of the lower part of the equations.",
+          "tooltip": "Typically set to 0 to let MODFLOW compute automatically. Bandwidth depends on grid dimensions."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Convergence criteria and output options",
+      "variables": [
+        {
+          "name": "IFREQ",
+          "position": 0,
+          "type": "integer",
+          "description": "Frequency of matrix reconstruction. 1=every iteration, 2=every time step, 3=only when needed.",
+          "tooltip": "1=reconstruct equations every outer iteration. 2=reconstruct each time step (saves time for linear problems). 3=reconstruct only at start or when time step size changes."
+        },
+        {
+          "name": "MUTD4",
+          "position": 1,
+          "type": "integer",
+          "description": "Printout flag. 0=print convergence summary, 1=print convergence iteration details, 2=no printing.",
+          "tooltip": "Controls solver output to listing file. 0=summary each time step. 1=detailed iteration info. 2=silent."
+        },
+        {
+          "name": "ACCL",
+          "position": 2,
+          "type": "float",
+          "description": "Multiplier for computed head change (acceleration parameter). Usually 1.0.",
+          "tooltip": "Head change multiplier. 1.0 is standard. Values > 1.0 can over-relax (accelerate). Values < 1.0 under-relax (stabilize)."
+        },
+        {
+          "name": "HCLOSE",
+          "position": 3,
+          "type": "float",
+          "description": "Head change convergence criterion (L).",
+          "tooltip": "Outer iterations converge when the maximum absolute head change is less than HCLOSE. Typical: 0.001 to 0.01."
+        },
+        {
+          "name": "IPRD4",
+          "position": 4,
+          "type": "integer",
+          "description": "Time step interval for printing convergence data when MUTD4=0 or 1.",
+          "tooltip": "Convergence information is printed every IPRD4 time steps. 1=every time step."
+        }
+      ]
+    }
+  ]
+}

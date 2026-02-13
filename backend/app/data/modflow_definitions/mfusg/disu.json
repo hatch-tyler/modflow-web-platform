@@ -1,0 +1,280 @@
+{
+  "package_name": "DISU",
+  "description": "Unstructured Discretization Package - Defines the spatial and temporal discretization for unstructured grids in MODFLOW-USG",
+  "file_extensions": [".disu"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Grid dimensions and control flags",
+      "variables": [
+        {
+          "name": "NODES",
+          "position": 0,
+          "type": "integer",
+          "description": "Total number of nodes (cells) in the model grid.",
+          "tooltip": "Total number of nodes across all layers. For a structured grid equivalent: NLAY * NROW * NCOL."
+        },
+        {
+          "name": "NLAY",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of layers in the model grid.",
+          "tooltip": "Number of model layers. Even for unstructured grids, a layer concept is maintained for vertical organization."
+        },
+        {
+          "name": "NJAG",
+          "position": 2,
+          "type": "integer",
+          "description": "Total number of connections plus the number of nodes (size of the JA array).",
+          "tooltip": "Total entries in the JA connection array. Equals sum of IAC values across all nodes. Includes the diagonal (self-connection) for each node."
+        },
+        {
+          "name": "IVSD",
+          "position": 3,
+          "type": "integer",
+          "description": "Flag for vertical sub-discretization. 0=no, -1=read vertical connectivity from IVC array.",
+          "tooltip": "0=no vertical sub-discretization, vertical connections determined from layering. -1=read IVC array to define which connections are vertical."
+        },
+        {
+          "name": "NPER",
+          "position": 4,
+          "type": "integer",
+          "description": "Number of stress periods in the simulation.",
+          "tooltip": "Number of stress periods. Each period can have different boundary conditions and time stepping."
+        },
+        {
+          "name": "ITMUNI",
+          "position": 5,
+          "type": "integer",
+          "description": "Time unit of model data. 0=undefined, 1=seconds, 2=minutes, 3=hours, 4=days, 5=years.",
+          "tooltip": "Indicates the time unit used throughout the model. Only affects output labeling, not calculations."
+        },
+        {
+          "name": "LENUNI",
+          "position": 6,
+          "type": "integer",
+          "description": "Length unit of model data. 0=undefined, 1=feet, 2=meters, 3=centimeters.",
+          "tooltip": "Indicates the length unit used throughout the model. Only affects output labeling, not calculations."
+        },
+        {
+          "name": "IDSYMRD",
+          "position": 7,
+          "type": "integer",
+          "description": "Flag for symmetric connectivity input. 0=full JA read (both directions), 1=upper triangle only (symmetric).",
+          "tooltip": "0=full JA array is read (each connection listed twice). 1=only upper triangular part read, symmetric connections assumed. Reduces input size for symmetric grids."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Quasi-3D confining bed flags",
+      "variables": [
+        {
+          "name": "LAYCBD",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Flag for each layer indicating whether a quasi-3D confining bed exists below. 0=no confining bed.",
+          "tooltip": "One value per layer. Nonzero indicates a confining bed below that layer. LAYCBD for the bottom layer must be 0."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Number of nodes per layer",
+      "variables": [
+        {
+          "name": "NODELAY",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Number of nodes in each layer.",
+          "tooltip": "One value per layer. Sum of all NODELAY values must equal NODES. Allows different numbers of cells per layer (unstructured)."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Top elevation of each node",
+      "variables": [
+        {
+          "name": "TOP",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODES"],
+          "description": "Top elevation of each node in the model (L).",
+          "tooltip": "One value per node. Top elevation of each cell. Read as NODELAY values per layer, for each layer."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "array",
+      "description": "Bottom elevation of each node",
+      "variables": [
+        {
+          "name": "BOT",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODES"],
+          "description": "Bottom elevation of each node in the model (L).",
+          "tooltip": "One value per node. Bottom elevation of each cell. Read as NODELAY values per layer, for each layer."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "array",
+      "description": "Horizontal cell area for each node",
+      "variables": [
+        {
+          "name": "AREA",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODES"],
+          "description": "Horizontal area of each node (L^2).",
+          "tooltip": "One value per node. Plan-view area of each cell. For Voronoi grids, this is the Voronoi cell area. Read per layer."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "free",
+      "description": "Number of connections per node (including self)",
+      "variables": [
+        {
+          "name": "IAC",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NODES"],
+          "description": "Number of connections (plus 1 for the diagonal) for each node.",
+          "tooltip": "One value per node. Includes the node itself (diagonal entry). A corner cell with 2 horizontal + 1 vertical neighbor has IAC=4 (3 connections + self)."
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "format": "free",
+      "description": "Cell connection list",
+      "variables": [
+        {
+          "name": "JA",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NJAG"],
+          "description": "Node numbers of connections for each node. First entry for each node is the node itself (diagonal).",
+          "tooltip": "Compressed sparse row connection list. For each node, the first entry is the node number itself, followed by its connected node numbers. Total size = NJAG."
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "format": "free",
+      "description": "Vertical connection flags",
+      "condition": "IVSD == -1",
+      "variables": [
+        {
+          "name": "IVC",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NJAG"],
+          "description": "Flag indicating whether each connection is vertical. 0=horizontal, 1=vertical.",
+          "tooltip": "One value per JA entry. 0=horizontal connection, 1=vertical connection. The diagonal (self) entry should be 0. Only read if IVSD=-1."
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "format": "free",
+      "description": "Connection distances",
+      "variables": [
+        {
+          "name": "CL1",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NJAG"],
+          "description": "Distance from the center of node n to the shared face with connected node m (L).",
+          "tooltip": "Connection length from the first node to the shared face. One value per JA entry. Diagonal entries are not used but must be present."
+        },
+        {
+          "name": "CL2",
+          "position": 1,
+          "type": "float_array",
+          "shape": ["NJAG"],
+          "description": "Distance from the center of connected node m to the shared face with node n (L).",
+          "tooltip": "Connection length from the second node to the shared face. One value per JA entry. Diagonal entries are not used but must be present."
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "format": "free",
+      "description": "Area of connection faces",
+      "variables": [
+        {
+          "name": "FAHL",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NJAG"],
+          "description": "Area of the connection interface between adjacent nodes (L^2).",
+          "tooltip": "Cross-sectional area of each cell face shared between connected nodes. For horizontal connections: width * thickness. For vertical: horizontal area. One value per JA entry."
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "format": "free",
+      "description": "Stress period information",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "PERLEN",
+          "position": 0,
+          "type": "float",
+          "description": "Length of the stress period in model time units.",
+          "tooltip": "Duration of the stress period."
+        },
+        {
+          "name": "NSTP",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of time steps in the stress period.",
+          "tooltip": "Number of time steps within this stress period."
+        },
+        {
+          "name": "TSMULT",
+          "position": 2,
+          "type": "float",
+          "description": "Time step multiplier. 1.0 gives equal time steps.",
+          "tooltip": "Multiplier for time step length. 1.0=equal steps. >1.0=increasing step sizes."
+        },
+        {
+          "name": "Ss/tr",
+          "position": 3,
+          "type": "string",
+          "description": "Stress period type: 'SS' for steady state or 'TR' for transient.",
+          "tooltip": "'SS'=steady-state (storage terms ignored). 'TR'=transient (storage terms active)."
+        }
+      ]
+    }
+  ]
+}

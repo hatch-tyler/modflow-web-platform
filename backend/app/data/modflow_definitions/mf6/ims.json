@@ -1,0 +1,176 @@
+{
+  "package_name": "IMS",
+  "description": "Iterative Model Solution",
+  "file_extensions": [".ims"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Solver configuration options that control output and preset complexity levels.",
+      "variables": [
+        {
+          "name": "PRINT_OPTION",
+          "type": "keyword_choice",
+          "choices": ["NONE", "SUMMARY", "ALL"],
+          "description": "Controls the amount of solver information printed to the listing file.",
+          "tooltip": "NONE prints nothing, SUMMARY prints a summary of solver convergence at the end of each outer iteration, ALL prints full details for every inner and outer iteration."
+        },
+        {
+          "name": "COMPLEXITY",
+          "type": "keyword_choice",
+          "choices": ["SIMPLE", "MODERATE", "COMPLEX"],
+          "description": "Sets default solver parameters based on model complexity.",
+          "tooltip": "SIMPLE for linear problems (e.g., confined, no rewetting), MODERATE for mildly nonlinear models (e.g., unconfined without rewetting), COMPLEX for highly nonlinear models with rewetting or Newton formulation."
+        },
+        {
+          "name": "CSV_OUTPUT FILEOUT",
+          "type": "string",
+          "description": "Name of the comma-separated values (CSV) output file for writing solver convergence information.",
+          "tooltip": "When specified, solver convergence data is written to the named CSV file at each outer iteration, useful for diagnosing convergence behavior."
+        }
+      ]
+    },
+    {
+      "name": "NONLINEAR",
+      "description": "Nonlinear (outer) iteration solver settings controlling convergence criteria, under-relaxation, and backtracking.",
+      "variables": [
+        {
+          "name": "OUTER_DVCLOSE",
+          "type": "float",
+          "description": "Head change criterion for convergence of the outer (nonlinear) iterations, in units of length.",
+          "tooltip": "The outer iterations are considered converged when the maximum head change between consecutive outer iterations is less than or equal to OUTER_DVCLOSE. Typical values range from 0.001 to 0.01."
+        },
+        {
+          "name": "OUTER_MAXIMUM",
+          "type": "integer",
+          "description": "Maximum number of outer (nonlinear) iterations allowed per time step.",
+          "tooltip": "If the solution does not converge within OUTER_MAXIMUM iterations, the solver reports non-convergence. Typical values range from 25 to 500."
+        },
+        {
+          "name": "UNDER_RELAXATION",
+          "type": "keyword_choice",
+          "choices": ["NONE", "SIMPLE", "COOLEY", "DBD"],
+          "description": "Method used to under-relax the head change between consecutive outer iterations.",
+          "tooltip": "NONE applies no under-relaxation (default). SIMPLE uses a fixed factor. COOLEY uses an adaptive scheme. DBD (delta-bar-delta) uses a momentum-based adaptive scheme."
+        },
+        {
+          "name": "UNDER_RELAXATION_THETA",
+          "type": "float",
+          "description": "Under-relaxation reduction factor used with SIMPLE and COOLEY schemes.",
+          "tooltip": "For SIMPLE, this is the fixed relaxation factor (0 < theta <= 1). For COOLEY, it is the reduction factor applied when the solution oscillates. Typical values are 0.7 to 0.9."
+        },
+        {
+          "name": "UNDER_RELAXATION_KAPPA",
+          "type": "float",
+          "description": "Increment for the learning rate used with the DBD under-relaxation scheme.",
+          "tooltip": "Controls the rate of change of the relaxation factor in the DBD scheme. Typical values are small positive numbers like 0.0001."
+        },
+        {
+          "name": "UNDER_RELAXATION_GAMMA",
+          "type": "float",
+          "description": "History or memory term factor for the DBD under-relaxation scheme.",
+          "tooltip": "Controls how much weight is given to previous iteration changes in the DBD scheme. Typical values range from 0.0 to 0.2."
+        },
+        {
+          "name": "UNDER_RELAXATION_MOMENTUM",
+          "type": "float",
+          "description": "Fraction of past history changes used to compute the momentum in the DBD scheme.",
+          "tooltip": "Controls the contribution of accumulated momentum from previous iterations. Typical values range from 0.0 to 0.1."
+        },
+        {
+          "name": "BACKTRACKING_NUMBER",
+          "type": "integer",
+          "description": "Maximum number of backtracking iterations allowed per outer iteration.",
+          "tooltip": "Backtracking reduces the step size when the residual increases between outer iterations. Set to 0 to disable backtracking. Typical values are 0 to 20."
+        },
+        {
+          "name": "BACKTRACKING_TOLERANCE",
+          "type": "float",
+          "description": "Proportional residual increase tolerance for triggering backtracking.",
+          "tooltip": "Backtracking is initiated when the L2-norm of the residual increases by more than BACKTRACKING_TOLERANCE times the previous residual. Typical value is 1.1."
+        },
+        {
+          "name": "BACKTRACKING_REDUCTION_FACTOR",
+          "type": "float",
+          "description": "Factor by which the head change is reduced during each backtracking iteration.",
+          "tooltip": "The step is multiplied by this factor during backtracking. Typical values are 0.1 to 0.3."
+        },
+        {
+          "name": "BACKTRACKING_RESIDUAL_LIMIT",
+          "type": "float",
+          "description": "Limit on the residual below which backtracking is not performed.",
+          "tooltip": "Prevents unnecessary backtracking when the residual is already small. Typical value is 100.0."
+        }
+      ]
+    },
+    {
+      "name": "LINEAR",
+      "description": "Linear (inner) iteration solver settings controlling the iterative method, preconditioner, and convergence criteria.",
+      "variables": [
+        {
+          "name": "INNER_MAXIMUM",
+          "type": "integer",
+          "description": "Maximum number of inner (linear) iterations allowed per outer iteration.",
+          "tooltip": "The linear solver iterates up to INNER_MAXIMUM times to solve the linearized system. Typical values range from 50 to 500."
+        },
+        {
+          "name": "INNER_DVCLOSE",
+          "type": "float",
+          "description": "Head change criterion for convergence of the inner (linear) iterations.",
+          "tooltip": "The linear solver is considered converged when the maximum head change is less than INNER_DVCLOSE. Should be smaller than OUTER_DVCLOSE, typically 0.001 or less."
+        },
+        {
+          "name": "INNER_RCLOSE",
+          "type": "float",
+          "description": "Residual criterion for convergence of the inner (linear) iterations.",
+          "tooltip": "The linear solver is converged when the maximum residual is less than INNER_RCLOSE. Units are length cubed per time. Typical values are 0.01 to 1.0."
+        },
+        {
+          "name": "LINEAR_ACCELERATION",
+          "type": "keyword_choice",
+          "choices": ["CG", "BICGSTAB"],
+          "description": "Defines the linear acceleration method used by the inner solver.",
+          "tooltip": "CG (Conjugate Gradient) is used for symmetric matrices. BICGSTAB (Biconjugate Gradient Stabilized) is used for asymmetric matrices, such as those arising from transport models."
+        },
+        {
+          "name": "RELAXATION_FACTOR",
+          "type": "float",
+          "description": "Relaxation factor used by the preconditioner.",
+          "tooltip": "A value of 0.0 results in ILU preconditioning, a value of 1.0 results in Modified ILU (MILU). Values between 0.0 and 1.0 result in a weighted combination. Typical value is 0.97."
+        },
+        {
+          "name": "PRECONDITIONER_LEVELS",
+          "type": "integer",
+          "description": "Number of fill levels for the ILU preconditioner (ILU(k) factorization).",
+          "tooltip": "Higher levels increase accuracy of the preconditioner but require more memory and computation. Typical values are 0 to 5. Used when RELAXATION_FACTOR is 0."
+        },
+        {
+          "name": "PRECONDITIONER_DROP_TOLERANCE",
+          "type": "float",
+          "description": "Drop tolerance for the ILU preconditioner (ILUT factorization).",
+          "tooltip": "Elements smaller than this value times the diagonal are dropped from the factorization. Smaller values yield more accurate preconditioners. Typical values are 0.0001 to 0.001."
+        },
+        {
+          "name": "NUMBER_ORTHOGONALIZATIONS",
+          "type": "integer",
+          "description": "Number of orthogonalization vectors used by BICGSTAB or the number of restart vectors for CG.",
+          "tooltip": "Higher values can improve convergence but increase memory use. Set to 0 for standard BICGSTAB or CG. Typical values are 0 to 10."
+        },
+        {
+          "name": "SCALING_METHOD",
+          "type": "keyword_choice",
+          "choices": ["NONE", "DIAGONAL", "L2NORM"],
+          "description": "Method used to scale the linear system before solving.",
+          "tooltip": "NONE applies no scaling. DIAGONAL scales by the inverse of the diagonal. L2NORM scales rows by their L2-norm. Scaling can improve convergence for poorly conditioned systems."
+        },
+        {
+          "name": "REORDERING_METHOD",
+          "type": "keyword_choice",
+          "choices": ["NONE", "RCM", "MD"],
+          "description": "Method used to reorder the matrix equations before solving.",
+          "tooltip": "NONE applies no reordering. RCM (Reverse Cuthill-McKee) reduces bandwidth. MD (Minimum Degree) reduces fill-in. Reordering can improve preconditioner effectiveness."
+        }
+      ]
+    }
+  ]
+}

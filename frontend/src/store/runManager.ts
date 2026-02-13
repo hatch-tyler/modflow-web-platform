@@ -80,7 +80,7 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
     }
 
     // Helper to create SSE connection with event handlers
-    const connectSSE = (attemptNumber: number) => {
+    const connectSSE = () => {
       const eventSource = runType === 'simulation'
         ? createOutputEventSource(projectId, runId)
         : createPestOutputEventSource(projectId, runId)
@@ -138,7 +138,7 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
         const timer = setTimeout(() => {
           const run = get().activeRuns[runId]
           if (run && run.status === 'running') {
-            const newES = connectSSE(attempts)
+            const newES = connectSSE()
             set((s) => ({
               activeRuns: {
                 ...s.activeRuns,
@@ -169,7 +169,7 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
       return eventSource
     }
 
-    const eventSource = connectSSE(0)
+    const eventSource = connectSSE()
 
     // Create new active run
     const actualStart = startedAt || new Date()

@@ -1,0 +1,110 @@
+{
+  "package_name": "DIS",
+  "description": "Structured Discretization",
+  "file_extensions": [".dis"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options for the structured grid, including spatial reference and units.",
+      "variables": [
+        {
+          "name": "LENGTH_UNITS",
+          "type": "keyword_choice",
+          "choices": ["UNKNOWN", "FEET", "METERS", "CENTIMETERS"],
+          "description": "Length units used for the model grid and all spatial data.",
+          "tooltip": "Specifies the length units for all spatial dimensions in the model. Must be consistent with all input data including hydraulic conductivity and boundary conditions."
+        },
+        {
+          "name": "NOGRB",
+          "type": "keyword",
+          "description": "Keyword to deactivate writing of the binary grid file.",
+          "tooltip": "When specified, the binary grid (GRB) file is not written. The GRB file contains grid connectivity information used by post-processing tools. Omitting it saves disk space but limits post-processing."
+        },
+        {
+          "name": "XORIGIN",
+          "type": "float",
+          "description": "X-coordinate of the origin of the model grid, in the length units specified.",
+          "tooltip": "The x-coordinate of the lower-left corner of the model grid in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "YORIGIN",
+          "type": "float",
+          "description": "Y-coordinate of the origin of the model grid, in the length units specified.",
+          "tooltip": "The y-coordinate of the lower-left corner of the model grid in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "ANGROT",
+          "type": "float",
+          "description": "Counter-clockwise rotation angle of the model grid about the origin, in degrees.",
+          "tooltip": "Rotates the grid around the origin point. A positive value rotates counter-clockwise. Used when the model grid is not aligned with the coordinate system axes. Default is 0.0."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Grid dimensions defining the number of layers, rows, and columns.",
+      "variables": [
+        {
+          "name": "NLAY",
+          "type": "integer",
+          "description": "Number of layers in the model grid.",
+          "tooltip": "Defines the vertical discretization. Each layer can have different properties. Layers are numbered from top (1) to bottom (NLAY)."
+        },
+        {
+          "name": "NROW",
+          "type": "integer",
+          "description": "Number of rows in the model grid.",
+          "tooltip": "Defines the number of rows in the structured grid. Rows are numbered from the top (north) edge of the grid (row 1) to the bottom (south) edge."
+        },
+        {
+          "name": "NCOL",
+          "type": "integer",
+          "description": "Number of columns in the model grid.",
+          "tooltip": "Defines the number of columns in the structured grid. Columns are numbered from the left (west) edge of the grid (column 1) to the right (east) edge."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Grid geometry data defining cell sizes and elevations.",
+      "variables": [
+        {
+          "name": "DELR",
+          "type": "array_1d",
+          "shape": "NCOL",
+          "description": "Column spacing along rows, an array of size NCOL.",
+          "tooltip": "Width of each column in the row direction. Can be a single value (uniform spacing) or an array of NCOL values for variable spacing. Units are the specified LENGTH_UNITS."
+        },
+        {
+          "name": "DELC",
+          "type": "array_1d",
+          "shape": "NROW",
+          "description": "Row spacing along columns, an array of size NROW.",
+          "tooltip": "Width of each row in the column direction. Can be a single value (uniform spacing) or an array of NROW values for variable spacing. Units are the specified LENGTH_UNITS."
+        },
+        {
+          "name": "TOP",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "Top elevation of the first model layer, a 2D array of size NROW by NCOL.",
+          "tooltip": "Elevation of the top of layer 1. For layer 1 cells, this defines the upper boundary. Typically represents the land surface or top of the aquifer system."
+        },
+        {
+          "name": "BOTM",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Bottom elevation for each model layer, a 3D array of size NLAY by NROW by NCOL.",
+          "tooltip": "Bottom elevation of each cell. BOTM for layer k also serves as the top of layer k+1. Must be less than the top elevation for each cell."
+        },
+        {
+          "name": "IDOMAIN",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Integer array indicating active (1), inactive (0), or vertical pass-through (-1) cells.",
+          "tooltip": "Controls which cells are active. 1 = active (simulated), 0 = inactive (excluded), -1 = vertical pass-through (flow passes through but no equation solved). Default is 1 for all cells."
+        }
+      ]
+    }
+  ]
+}

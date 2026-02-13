@@ -1,0 +1,125 @@
+{
+  "package_name": "NPF",
+  "description": "Node Property Flow",
+  "file_extensions": [".npf"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling flow calculations, rewetting, and XT3D formulation.",
+      "variables": [
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save cell-by-cell flow terms to the budget file.",
+          "tooltip": "When specified, intercell flow terms computed by the NPF package are written to the cell-by-cell budget file defined in the Output Control package."
+        },
+        {
+          "name": "ALTERNATIVE_CELL_AVERAGING",
+          "type": "keyword_choice",
+          "choices": ["LOGARITHMIC", "AMT-LMK", "AMT-HMK"],
+          "description": "Method for computing equivalent hydraulic conductivity between adjacent cells.",
+          "tooltip": "LOGARITHMIC uses the logarithmic mean. AMT-LMK uses the arithmetic mean thickness and logarithmic mean hydraulic conductivity. AMT-HMK uses arithmetic mean thickness and harmonic mean hydraulic conductivity. Default is harmonic mean."
+        },
+        {
+          "name": "THICKSTRT",
+          "type": "keyword",
+          "description": "Keyword indicating that cells with a negative ICELLTYPE are confined and their saturated thickness is computed from the initial head and the cell bottom.",
+          "tooltip": "When active, convertible cells that start with head below the cell top are treated as confined with thickness equal to the starting head minus the bottom. Useful for models with initial conditions below the top."
+        },
+        {
+          "name": "VARIABLECV",
+          "type": "keyword",
+          "description": "Keyword indicating that the vertical conductance between cells varies with water table position.",
+          "tooltip": "When specified, vertical conductance is recalculated as the water table moves. By default, vertical conductance uses the full cell thickness. DEWATERED option can be added to use dewatered thickness."
+        },
+        {
+          "name": "DEWATERED",
+          "type": "keyword",
+          "description": "Keyword to use the dewatered portion of a cell when computing vertical conductance (used with VARIABLECV).",
+          "tooltip": "When combined with VARIABLECV, vertical conductance is calculated using only the saturated (dewatered) portion of the cell. Requires VARIABLECV to be specified."
+        },
+        {
+          "name": "PERCHED",
+          "type": "keyword",
+          "description": "Keyword indicating that perched water table conditions are allowed.",
+          "tooltip": "When specified, flow between a cell and the cell below it is computed using the head difference between the cell's head and the bottom of the upper cell, simulating perched conditions."
+        },
+        {
+          "name": "REWET",
+          "type": "keyword",
+          "description": "Keyword to activate the wetting and drying capability for convertible cells.",
+          "tooltip": "Allows dry cells to rewet when neighboring cells have sufficient head. Requires WETFACTOR, IWETIT, and IHDWET sub-options. Can cause convergence difficulties; Newton formulation is often preferred."
+        },
+        {
+          "name": "XT3D",
+          "type": "keyword",
+          "description": "Keyword to activate the XT3D formulation for improved flow calculation on non-orthogonal grids.",
+          "tooltip": "Uses the extended transmissivity tensor formulation for more accurate flow computation on grids where cell connections are not perpendicular to cell faces. Increases computation time. Add RHS option to use right-hand-side formulation for symmetric matrix."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Cell property data for hydraulic conductivity and wetting parameters.",
+      "variables": [
+        {
+          "name": "ICELLTYPE",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Integer flag for each cell indicating if it is convertible (>0), confined (0), or confined with constant thickness (<0).",
+          "tooltip": "Values > 0 indicate convertible (unconfined) cells where transmissivity varies with the water table. 0 indicates confined cells with constant transmissivity. < 0 indicates confined cells that use THICKSTRT if active."
+        },
+        {
+          "name": "K",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Hydraulic conductivity along the first model axis (typically horizontal, along rows).",
+          "tooltip": "Horizontal hydraulic conductivity in the row direction (Kx). Units are length per time. Must be positive. This is the primary hydraulic conductivity value for each cell."
+        },
+        {
+          "name": "K22",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Hydraulic conductivity along the second horizontal model axis (typically along columns).",
+          "tooltip": "Horizontal hydraulic conductivity in the column direction (Ky). If not specified, K22 is set equal to K (isotropic in the horizontal plane). Used for anisotropic models."
+        },
+        {
+          "name": "K33",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Hydraulic conductivity along the third model axis (vertical).",
+          "tooltip": "Vertical hydraulic conductivity (Kz). If not specified, K33 is set equal to K. Typically much smaller than K for layered aquifer systems (Kz/Kx ratios of 0.01 to 0.1 are common)."
+        },
+        {
+          "name": "ANGLE1",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "First rotation angle (in degrees) for the hydraulic conductivity ellipsoid, rotation in the x-y plane.",
+          "tooltip": "Angle of the first rotation of the hydraulic conductivity tensor, measured counter-clockwise from the positive x-axis in the horizontal plane. Used with K22 for horizontal anisotropy that is not aligned with the grid."
+        },
+        {
+          "name": "ANGLE2",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Second rotation angle (in degrees) for the hydraulic conductivity ellipsoid, rotation from horizontal.",
+          "tooltip": "Angle of the second rotation of the hydraulic conductivity tensor, tilting the first axis from horizontal. Used for dipping anisotropy. Requires XT3D to be active."
+        },
+        {
+          "name": "ANGLE3",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Third rotation angle (in degrees) for the hydraulic conductivity ellipsoid.",
+          "tooltip": "Angle of the third rotation of the hydraulic conductivity tensor about the first axis after ANGLE1 and ANGLE2 rotations. Rarely used. Requires XT3D to be active."
+        },
+        {
+          "name": "WETDRY",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Wetting/drying threshold and direction flag for convertible cells.",
+          "tooltip": "Combines the wetting threshold and direction. Positive values allow wetting from below only; negative values allow wetting from below and horizontally. The absolute value is the wetting threshold head. Only used when REWET is active."
+        }
+      ]
+    }
+  ]
+}

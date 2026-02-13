@@ -459,6 +459,106 @@ export interface StructuredGridInfo {
   length_unit: string | null
 }
 
+// Convergence analysis types
+export interface TimestepConvergence {
+  kper: number
+  kstp: number
+  outer_iterations: number
+  converged: boolean
+  max_dvmax: number
+  max_dvmax_cell: string
+  max_rclose: number
+  max_rclose_cell: string
+  backtracking_events: number
+}
+
+export interface StressPeriodSummary {
+  kper: number
+  total_outer_iters: number
+  max_iterations: number
+  failed_timesteps: number
+  avg_iterations: number
+  percent_discrepancy: number | null
+  difficulty: 'low' | 'moderate' | 'high' | 'failed'
+}
+
+export interface ProblemCell {
+  cell_id: string
+  occurrences: number
+  type: string
+  affected_sps: number[]
+}
+
+export interface SolverSettings {
+  solver_type: string
+  complexity?: string
+  outer_dvclose?: number
+  outer_maximum?: number
+  inner_rclose?: number
+  inner_dvclose?: number
+  under_relaxation?: string
+  backtracking_number?: number
+  linear_acceleration?: string
+  hclose?: number
+  rclose?: number
+  inner_maximum?: number
+}
+
+export interface ConvergenceDetail {
+  model_type: string
+  total_timesteps: number
+  failed_timesteps: number
+  timesteps: TimestepConvergence[]
+  stress_period_summary: StressPeriodSummary[]
+  problem_cells: ProblemCell[]
+  solver_settings: SolverSettings
+}
+
+export interface StressPeriodPackageData {
+  total_rate: number
+  mean_rate?: number
+  n_active: number
+}
+
+export interface StressPeriod {
+  kper: number
+  perlen?: number
+  nstp?: number
+  tsmult?: number
+  [packageName: string]: StressPeriodPackageData | number | undefined
+}
+
+export interface StressSummary {
+  packages: string[]
+  periods: StressPeriod[]
+}
+
+export interface RefinementFileModification {
+  package: string
+  block: string | null
+  variable: string
+  old_value: string
+  new_value: string
+  stress_period?: number
+}
+
+export interface Refinement {
+  id: string
+  category: 'solver' | 'temporal' | 'package'
+  priority: 'high' | 'medium' | 'low'
+  title: string
+  description: string
+  current_value: string
+  suggested_value: string
+  file_modification: RefinementFileModification | null
+}
+
+export interface BackupInfo {
+  timestamp: string
+  size: number
+  path: string
+}
+
 // Zone budget types
 export interface ZoneDefinitionSummary {
   name: string

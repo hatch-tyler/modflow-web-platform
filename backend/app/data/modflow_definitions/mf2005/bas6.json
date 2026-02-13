@@ -1,0 +1,115 @@
+{
+  "package_name": "BAS6",
+  "description": "Basic Package - Specifies boundary conditions, initial heads, and certain output control options",
+  "file_extensions": [".bas", ".ba6"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/bas6.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Options line",
+      "variables": [
+        {
+          "name": "FREE",
+          "position": 0,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates free-format input for all packages.",
+          "tooltip": "When specified, all input data is read in free format. Strongly recommended for new models."
+        },
+        {
+          "name": "XSECTION",
+          "position": 1,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates the model is a cross-section with a single row.",
+          "tooltip": "Used for 2D cross-section models where NROW=1. Adjusts internal boundary handling."
+        },
+        {
+          "name": "CHTOCH",
+          "position": 2,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates that flow between adjacent constant-head cells should be calculated.",
+          "tooltip": "By default, flow between two adjacent constant-head cells is not calculated. This option enables it."
+        },
+        {
+          "name": "PRINTTIME",
+          "position": 3,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates that simulation start and end times should be printed to listing file.",
+          "tooltip": "Prints the start time, end time, and elapsed time at the end of the listing file."
+        },
+        {
+          "name": "SHOWPROGRESS",
+          "position": 4,
+          "type": "keyword",
+          "optional": true,
+          "description": "Indicates that simulation progress should be displayed.",
+          "tooltip": "Displays simulation progress during execution. Useful for long-running simulations."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "array",
+      "description": "Boundary variable array",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "IBOUND",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Boundary condition array for each layer. >0=active variable-head, 0=inactive no-flow, <0=constant head.",
+          "tooltip": "Defines cell status: positive values indicate active cells (head computed), zero indicates no-flow cells, negative values indicate constant-head cells. Read for each layer."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Head value assigned to inactive cells",
+      "variables": [
+        {
+          "name": "HNOFLO",
+          "position": 0,
+          "type": "float",
+          "description": "Head value assigned to inactive (no-flow) cells.",
+          "tooltip": "Value of head written for inactive cells in output. Common values: -999.99, -9999, or 0. Used only for output display."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Initial (starting) heads",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "STRT",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Starting head at the beginning of the simulation for each cell.",
+          "tooltip": "Initial heads for each cell. For steady-state simulations, these serve as initial guesses for the solver. For transient runs, these are the heads at time=0. Read for each layer."
+        }
+      ]
+    }
+  ]
+}

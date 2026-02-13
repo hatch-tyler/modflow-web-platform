@@ -1,0 +1,184 @@
+{
+  "package_name": "DIS",
+  "description": "Discretization Package - Defines the spatial and temporal discretization of the model grid",
+  "file_extensions": [".dis"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/dis.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Grid dimensions and time information",
+      "variables": [
+        {
+          "name": "NLAY",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of layers in the model grid.",
+          "tooltip": "The number of model layers. Must be >= 1."
+        },
+        {
+          "name": "NROW",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of rows in the model grid.",
+          "tooltip": "The number of rows in the finite-difference grid. Must be >= 1."
+        },
+        {
+          "name": "NCOL",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of columns in the model grid.",
+          "tooltip": "The number of columns in the finite-difference grid. Must be >= 1."
+        },
+        {
+          "name": "NPER",
+          "position": 3,
+          "type": "integer",
+          "description": "Number of stress periods in the simulation.",
+          "tooltip": "The number of stress periods. Each stress period can have different boundary conditions and time stepping."
+        },
+        {
+          "name": "ITMUNI",
+          "position": 4,
+          "type": "integer",
+          "description": "Time unit of model data. 0=undefined, 1=seconds, 2=minutes, 3=hours, 4=days, 5=years.",
+          "tooltip": "Indicates the time unit used throughout the model. Only affects output labeling, not calculations."
+        },
+        {
+          "name": "LENUNI",
+          "position": 5,
+          "type": "integer",
+          "description": "Length unit of model data. 0=undefined, 1=feet, 2=meters, 3=centimeters.",
+          "tooltip": "Indicates the length unit used throughout the model. Only affects output labeling, not calculations."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Quasi-3D confining bed flags",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "LAYCBD",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Flag for each layer indicating whether a quasi-3D confining bed exists below. 0=no confining bed, nonzero=confining bed present.",
+          "tooltip": "One value per layer. LAYCBD for the bottom layer must be 0. A nonzero value indicates a confining bed exists below that layer."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "Row spacing along columns",
+      "variables": [
+        {
+          "name": "DELR",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NCOL"],
+          "description": "Width of each column (cell size along rows) in model length units.",
+          "tooltip": "One value per column. Specifies the width of cells along the row direction."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Column spacing along rows",
+      "variables": [
+        {
+          "name": "DELC",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NROW"],
+          "description": "Width of each row (cell size along columns) in model length units.",
+          "tooltip": "One value per row. Specifies the width of cells along the column direction."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "array",
+      "description": "Top elevation of layer 1",
+      "variables": [
+        {
+          "name": "TOP",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Top elevation of the first model layer in model length units.",
+          "tooltip": "2D array (NROW x NCOL) of the top elevation of layer 1. For subsequent layers, the top is the bottom of the layer above."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "array",
+      "description": "Bottom elevations for all layers and confining beds",
+      "repeat": "NLAY + number_of_confining_beds",
+      "variables": [
+        {
+          "name": "BOTM",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Bottom elevation of each model layer (and confining bed) in model length units.",
+          "tooltip": "2D array (NROW x NCOL) for each layer and confining bed. Read for NLAY layers plus any quasi-3D confining beds indicated by LAYCBD."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "free",
+      "description": "Stress period information",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "PERLEN",
+          "position": 0,
+          "type": "float",
+          "description": "Length of the stress period in model time units.",
+          "tooltip": "Duration of the stress period. For steady-state stress periods, PERLEN is not used in the solution but must be specified."
+        },
+        {
+          "name": "NSTP",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of time steps in the stress period.",
+          "tooltip": "Number of time steps within this stress period. More time steps give finer temporal resolution."
+        },
+        {
+          "name": "TSMULT",
+          "position": 2,
+          "type": "float",
+          "description": "Time step multiplier. Length of each time step equals TSMULT times the previous step length.",
+          "tooltip": "Multiplier for time step length. 1.0 gives equal time steps. Values > 1.0 give increasing step sizes (common: 1.2-1.5)."
+        },
+        {
+          "name": "Ss/tr",
+          "position": 3,
+          "type": "string",
+          "description": "Stress period type: 'SS' for steady state or 'TR' for transient.",
+          "tooltip": "'SS' means steady-state (storage terms ignored), 'TR' means transient (storage terms active). The first stress period is commonly SS."
+        }
+      ]
+    }
+  ]
+}

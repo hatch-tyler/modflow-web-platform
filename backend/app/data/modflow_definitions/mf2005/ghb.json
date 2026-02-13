@@ -1,0 +1,116 @@
+{
+  "package_name": "GHB",
+  "description": "General-Head Boundary Package - Simulates flow into or out of a cell from an external source proportional to the head difference",
+  "file_extensions": [".ghb"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/ghb.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Maximum number of GHB cells and output unit",
+      "variables": [
+        {
+          "name": "Option",
+          "position": 0,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keyword 'AUXILIARY' followed by auxiliary variable names, and/or 'NOPRINT'.",
+          "tooltip": "AUXILIARY adds extra data columns. NOPRINT suppresses GHB list output to listing file."
+        },
+        {
+          "name": "MXACTB",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of GHB cells active during any stress period.",
+          "tooltip": "Maximum number of GHB entries used simultaneously across all stress periods."
+        },
+        {
+          "name": "IGHBCB",
+          "position": 2,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, GHB flow terms saved to binary file. If 0, no cell-by-cell output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period data header",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "ITMP",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of GHB entries for this stress period. <0 reuses previous period data.",
+          "tooltip": "If > 0, ITMP entries follow. If 0, no GHB boundaries active. If < 0, reuse previous stress period data."
+        },
+        {
+          "name": "NP",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of parameters active in this stress period.",
+          "tooltip": "Number of named parameters active during this stress period. Typically 0 if not using parameters."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "General-head boundary data entries",
+      "repeat": "ITMP (per stress period)",
+      "variables": [
+        {
+          "name": "Layer",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number of the GHB cell (1-based).",
+          "tooltip": "Layer containing the GHB boundary. 1-based index."
+        },
+        {
+          "name": "Row",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number of the GHB cell (1-based).",
+          "tooltip": "Row location of the GHB boundary. 1-based index."
+        },
+        {
+          "name": "Column",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number of the GHB cell (1-based).",
+          "tooltip": "Column location of the GHB boundary. 1-based index."
+        },
+        {
+          "name": "Bhead",
+          "position": 3,
+          "type": "float",
+          "description": "Boundary head (L). The head in the external source.",
+          "tooltip": "Head of the external source. Flow = Conductance * (Bhead - head_in_cell). If Bhead > cell head, water flows into the cell."
+        },
+        {
+          "name": "Conductance",
+          "position": 4,
+          "type": "float",
+          "description": "Hydraulic conductance of the interface between the external source and the cell (L^2/T).",
+          "tooltip": "Controls the rate of flow between the external source and the model cell. Higher values allow more flow. Units: L^2/T."
+        }
+      ]
+    }
+  ]
+}

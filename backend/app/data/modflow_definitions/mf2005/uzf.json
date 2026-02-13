@@ -1,0 +1,194 @@
+{
+  "package_name": "UZF",
+  "description": "Unsaturated-Zone Flow Package - Simulates vertical one-dimensional unsaturated flow between land surface and the water table using a kinematic-wave approximation",
+  "file_extensions": [".uzf"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/uzf.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "UZF dimensions, options, and control flags",
+      "variables": [
+        {
+          "name": "NUZTOP",
+          "position": 0,
+          "type": "integer",
+          "description": "Flag for UZF recharge and discharge location. 1=top layer, 2=specified layer, 3=highest active cell.",
+          "tooltip": "1=recharge to/discharge from layer 1. 2=recharge to specified layer (IUZFBND). 3=recharge to highest active cell. Option 3 is most common."
+        },
+        {
+          "name": "IUZFOPT",
+          "position": 1,
+          "type": "integer",
+          "description": "Flag for unsaturated zone flow simulation. 0=no UZ routing (recharge applied directly), 1=simulate vertical UZ flow, 2=simulate vertical UZ flow with residual water content.",
+          "tooltip": "0=no unsaturated zone simulation; infiltration goes directly to groundwater. 1=simulate UZ flow using Brooks-Corey relations. 2=same as 1 but accounts for residual water content."
+        },
+        {
+          "name": "IRUNFLG",
+          "position": 2,
+          "type": "integer",
+          "description": "Flag for groundwater discharge routing. 0=no routing, >0=route rejected infiltration and groundwater discharge.",
+          "tooltip": "0=rejected infiltration and discharge are removed from model. >0=route overland flow to streams/lakes using IRUNBND array."
+        },
+        {
+          "name": "IETFLG",
+          "position": 3,
+          "type": "integer",
+          "description": "Flag for ET simulation within UZF. 0=no ET, >0=simulate ET from unsaturated and saturated zones.",
+          "tooltip": "0=no ET calculated by UZF. >0=simulate ET using PET, extinction depth, and extinction water content arrays."
+        },
+        {
+          "name": "IUZFCB1",
+          "position": 4,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell recharge and discharge flow terms. 0=no output.",
+          "tooltip": "If > 0, UZF recharge and discharge flow terms saved to binary file."
+        },
+        {
+          "name": "IUZFCB2",
+          "position": 5,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell unsaturated zone budget terms. 0=no output.",
+          "tooltip": "If > 0, unsaturated zone budget terms (infiltration, ET, storage changes) saved to text file."
+        },
+        {
+          "name": "NTRAIL2",
+          "position": 6,
+          "type": "integer",
+          "description": "Number of trailing waves used in the unsaturated zone solution.",
+          "tooltip": "Number of trailing wave increments. Typical: 10-20. More waves improve accuracy but increase computation. Only used if IUZFOPT > 0."
+        },
+        {
+          "name": "NSETS2",
+          "position": 7,
+          "type": "integer",
+          "description": "Number of wave sets used in the unsaturated zone solution.",
+          "tooltip": "Number of trailing wave sets. Typical: 20-40. Should be >= NTRAIL2. Only used if IUZFOPT > 0."
+        },
+        {
+          "name": "NUZGAG",
+          "position": 8,
+          "type": "integer",
+          "description": "Number of UZF cells for which detailed budget output is desired.",
+          "tooltip": "Number of cells where detailed UZF budget output is written to a separate file. 0=no detailed output."
+        },
+        {
+          "name": "SURFDEP",
+          "position": 9,
+          "type": "float",
+          "description": "Average undulation depth of the land surface (L).",
+          "tooltip": "Surface depression storage depth. Defines the depth of water that can be stored on the land surface before runoff occurs. Typical: 0.01-0.1 m."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "array",
+      "description": "UZF cell boundary / layer indicator array",
+      "variables": [
+        {
+          "name": "IUZFBND",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Flag for each cell. >0=cell has UZF (value is layer number if NUZTOP=2), 0=no UZF.",
+          "tooltip": "2D array. Nonzero values indicate cells where UZF is active. If NUZTOP=2, the value specifies which layer receives recharge. 0 means no UZF at that location."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "Runoff routing array",
+      "condition": "IRUNFLG > 0",
+      "variables": [
+        {
+          "name": "IRUNBND",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Routing destination for rejected infiltration and groundwater discharge. >0=SFR segment number, <0=lake number, 0=removed from model.",
+          "tooltip": "2D array. Positive values route excess water to the specified SFR segment. Negative values route to the specified lake number. 0 means water is removed from the model."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Saturated vertical hydraulic conductivity of the unsaturated zone",
+      "condition": "IUZFOPT > 0",
+      "variables": [
+        {
+          "name": "VKS",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Saturated vertical hydraulic conductivity of the unsaturated zone (L/T).",
+          "tooltip": "2D array of maximum vertical K in the unsaturated zone. Controls the maximum infiltration rate. Only read if IUZFOPT > 0."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "array",
+      "description": "Brooks-Corey epsilon exponent",
+      "condition": "IUZFOPT > 0",
+      "variables": [
+        {
+          "name": "EPS",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Brooks-Corey epsilon exponent for the unsaturated zone.",
+          "tooltip": "2D array of Brooks-Corey exponents. Controls the shape of the moisture-conductivity relationship. Typical: 3.5 for sands, 5-7 for finer materials. Only read if IUZFOPT > 0."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "array",
+      "description": "Saturated water content",
+      "condition": "IUZFOPT > 0",
+      "variables": [
+        {
+          "name": "THTS",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Saturated volumetric water content of the unsaturated zone (dimensionless).",
+          "tooltip": "2D array of saturated water content (porosity). Typical: 0.30-0.45. Must be > THTI. Only read if IUZFOPT > 0."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "array",
+      "description": "Initial water content",
+      "condition": "IUZFOPT > 0",
+      "variables": [
+        {
+          "name": "THTI",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Initial volumetric water content of the unsaturated zone (dimensionless).",
+          "tooltip": "2D array of initial water content. Must be > 0 and <= THTS. Represents antecedent moisture conditions. Only read if IUZFOPT > 0."
+        }
+      ]
+    }
+  ]
+}

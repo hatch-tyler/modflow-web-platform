@@ -1,0 +1,68 @@
+{
+  "package_name": "CHD",
+  "description": "Constant Head",
+  "file_extensions": [".chd"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling constant head package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each constant head entry.",
+          "tooltip": "One or more names of auxiliary variables read with each CHD entry. Can be used for transport concentrations or other user-defined data."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the head value.",
+          "tooltip": "The named auxiliary variable is multiplied by the HEAD value. This is rarely used for CHD but is available for consistency with other packages."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each constant head cell.",
+          "tooltip": "When specified, each CHD entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print constant head input data to the listing file.",
+          "tooltip": "When specified, CHD data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print constant head flow rates to the listing file.",
+          "tooltip": "When specified, flow rates into and out of constant head cells are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save constant head flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, flow terms for constant head cells are written to the binary budget file for post-processing water budgets."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying constant head cell locations and head values.",
+      "variables": [
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the constant head location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell where the constant head boundary is applied. The head in this cell is fixed at the specified value regardless of surrounding conditions."
+        },
+        {
+          "name": "HEAD",
+          "type": "float",
+          "description": "Constant head value for the cell, in model length units.",
+          "tooltip": "The head is fixed at this elevation throughout the stress period. The model computes flow into or out of the cell to maintain this head. Flow direction depends on the head gradient with surrounding cells."
+        }
+      ]
+    }
+  ]
+}

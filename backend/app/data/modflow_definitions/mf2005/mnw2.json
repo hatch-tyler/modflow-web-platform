@@ -1,0 +1,203 @@
+{
+  "package_name": "MNW2",
+  "description": "Multi-Node Well Package Version 2 - Simulates wells that span multiple model layers with intraborehole flow and wellbore skin effects",
+  "file_extensions": [".mnw2"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/mnw2.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "MNW2 dimensions and options",
+      "variables": [
+        {
+          "name": "MNWMAX",
+          "position": 0,
+          "type": "integer",
+          "description": "Maximum number of multi-node wells to be simulated.",
+          "tooltip": "Maximum number of MNW2 wells in the model. Determines memory allocation."
+        },
+        {
+          "name": "NODTOT",
+          "position": 1,
+          "type": "integer",
+          "optional": true,
+          "description": "Maximum number of nodes (cells) associated with all MNW2 wells. 0=calculate automatically.",
+          "tooltip": "Total maximum number of well nodes across all wells. If 0 or blank, MODFLOW computes this from well definitions. Only needed if NODTOT must be specified for memory."
+        },
+        {
+          "name": "IPFLAG",
+          "position": 2,
+          "type": "integer",
+          "optional": true,
+          "description": "Flag for printing auxiliary data. Not commonly used.",
+          "tooltip": "Controls auxiliary variable printing. Typically 0."
+        },
+        {
+          "name": "MNWPRNT",
+          "position": 3,
+          "type": "integer",
+          "description": "Print flag controlling MNW2 output verbosity to the listing file.",
+          "tooltip": "0=minimal output. 1=print well data for each stress period. 2=also print node data. Higher values give more diagnostic output."
+        },
+        {
+          "name": "Options",
+          "position": 4,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keywords: AUXILIARY followed by variable names.",
+          "tooltip": "AUXILIARY adds additional user-defined variables to each well entry."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Well definition data - properties for each MNW2 well",
+      "repeat": "MNWMAX",
+      "variables": [
+        {
+          "name": "WELLID",
+          "position": 0,
+          "type": "string",
+          "description": "Unique alphanumeric well identifier (up to 20 characters).",
+          "tooltip": "Text name identifying this multi-node well. Must be unique among all MNW2 wells. Used for cross-referencing and output."
+        },
+        {
+          "name": "NNODES",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of cells (nodes) associated with this well. If <0, node information is computed from top and bottom screens.",
+          "tooltip": "If > 0, NNODES nodes are explicitly specified. If < 0, |NNODES| entries define screen intervals and MODFLOW determines intersected cells."
+        },
+        {
+          "name": "LOSSTYPE",
+          "position": 2,
+          "type": "string",
+          "description": "Well-loss model: NONE, THIEM, SKIN, GENERAL, or SPECIFYcwc.",
+          "tooltip": "NONE=no well loss. THIEM=Thiem equation (Rw only). SKIN=skin effect (Rw, Rskin, Kskin). GENERAL=general power law (B, C, P). SPECIFYcwc=user-specified cell-to-well conductance."
+        },
+        {
+          "name": "PUMPLOC",
+          "position": 3,
+          "type": "integer",
+          "description": "Pump intake location. 0=top active node, -1=compute, >0=specific node number.",
+          "tooltip": "0=pump at first (top) active node. -1=compute optimal location. >0=pump at specified node. Only relevant for multi-layer wells."
+        },
+        {
+          "name": "Qlimit",
+          "position": 4,
+          "type": "integer",
+          "description": "Flag for pumping constraints. 0=no constraint, -1=constrain by head, >0=net recharge is a limiting rate.",
+          "tooltip": "0=no pumping rate adjustment. -1=reduce pumping if head drops below specified limit. >0=use a limiting rate."
+        },
+        {
+          "name": "PPFLAG",
+          "position": 5,
+          "type": "integer",
+          "description": "Flag for partial penetration adjustment. 0=no adjustment, >0=adjustment applied.",
+          "tooltip": "0=no partial penetration correction. >0=apply partial penetration correction to the Thiem or skin equation."
+        },
+        {
+          "name": "PUMPCAP",
+          "position": 6,
+          "type": "integer",
+          "description": "Number of pump capability (lift-Q) pairs. 0=no pump capacity limitation.",
+          "tooltip": "If > 0, PUMPCAP pairs of (lift, Q) define the pump capacity curve. Pumping rate is reduced when lift exceeds the pump's capacity."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Well node data - properties per node depending on LOSSTYPE",
+      "repeat": "|NNODES| per well",
+      "variables": [
+        {
+          "name": "Rw",
+          "position": 0,
+          "type": "float",
+          "optional": true,
+          "description": "Well radius (L). Required for THIEM, SKIN, and GENERAL loss types.",
+          "tooltip": "Radius of the well casing or open borehole. Used for Thiem and skin-effect calculations."
+        },
+        {
+          "name": "Rskin",
+          "position": 1,
+          "type": "float",
+          "optional": true,
+          "description": "Outer radius of the skin zone (L). Required for SKIN loss type.",
+          "tooltip": "Outer radius of the disturbed zone (skin) around the well. Must be > Rw. Only for LOSSTYPE=SKIN."
+        },
+        {
+          "name": "Kskin",
+          "position": 2,
+          "type": "float",
+          "optional": true,
+          "description": "Hydraulic conductivity of the skin zone (L/T). Required for SKIN loss type.",
+          "tooltip": "Hydraulic conductivity of the skin zone material. If < aquifer K, represents positive skin (damage). Only for LOSSTYPE=SKIN."
+        },
+        {
+          "name": "B",
+          "position": 3,
+          "type": "float",
+          "optional": true,
+          "description": "Linear well-loss coefficient (T/L^2). Required for GENERAL loss type.",
+          "tooltip": "Linear head-loss coefficient for the GENERAL loss model. Head loss = B*Q + C*Q^P."
+        },
+        {
+          "name": "C",
+          "position": 4,
+          "type": "float",
+          "optional": true,
+          "description": "Nonlinear well-loss coefficient. Required for GENERAL loss type.",
+          "tooltip": "Nonlinear head-loss coefficient. Units depend on P. Head loss = B*Q + C*Q^P."
+        },
+        {
+          "name": "P",
+          "position": 5,
+          "type": "float",
+          "optional": true,
+          "description": "Power for nonlinear well-loss term. Required for GENERAL loss type.",
+          "tooltip": "Exponent for the nonlinear term. P=2 is the classic turbulent loss model. Head loss = B*Q + C*Q^P."
+        },
+        {
+          "name": "CWC",
+          "position": 6,
+          "type": "float",
+          "optional": true,
+          "description": "Cell-to-well conductance (L^2/T). Required for SPECIFYcwc loss type.",
+          "tooltip": "Directly specified conductance between the cell and the well. Only for LOSSTYPE=SPECIFYcwc."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "free",
+      "description": "Stress period data for each well",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "ITMP",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of active MNW2 wells for this stress period. <0=reuse previous data.",
+          "tooltip": "If > 0, ITMP well entries follow with pumping rates. If 0, no MNW2 wells active. If < 0, reuse previous stress period data."
+        }
+      ]
+    }
+  ]
+}

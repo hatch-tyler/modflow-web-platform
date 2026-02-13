@@ -167,6 +167,65 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
             update_progress(72, 100, "Parsing listing file for convergence...", "listing")
             convergence_result = _parse_listing_file(local_files)
 
+            # --- Detailed convergence analysis ---
+            update_progress(73, 100, "Running detailed convergence analysis...", "listing")
+            convergence_detail = None
+            try:
+                from app.services.convergence_parser import parse_mf6_listing, parse_classic_listing
+
+                if model_type == "mf6":
+                    mfsim_lst = local_files.get("mfsim.lst")
+                    # Find model listing (non-mfsim .lst file)
+                    flow_lst = None
+                    for key, path in local_files.items():
+                        if key.endswith(".lst") and key != "mfsim.lst" and isinstance(path, Path):
+                            flow_lst = path
+                            break
+                    if not flow_lst:
+                        flow_lst = local_files.get(".lst")
+                    convergence_detail = parse_mf6_listing(mfsim_lst, flow_lst)
+                else:
+                    lst_file = local_files.get(".lst") or local_files.get(".list")
+                    if lst_file:
+                        convergence_detail = parse_classic_listing(lst_file)
+
+                if convergence_detail:
+                    detail_json = json.dumps(convergence_detail, default=_json_serialize)
+                    storage.upload_bytes(
+                        settings.minio_bucket_models,
+                        f"{output_prefix}/processed/convergence_detail.json",
+                        detail_json.encode("utf-8"),
+                        content_type="application/json",
+                    )
+                    completed_stages.append("convergence_detail")
+            except Exception as e:
+                print(f"Warning: Detailed convergence parsing failed: {e}")
+
+            # --- Stress data extraction ---
+            update_progress(74, 100, "Extracting stress period data...", "listing")
+            try:
+                from app.services.stress_extractor import extract_stress_summary
+
+                if project.storage_path:
+                    stress_summary = extract_stress_summary(
+                        project_id=str(project.id),
+                        storage_path=project.storage_path,
+                        model_type=model_type,
+                        nper=project.nper or 1,
+                        stress_period_data=project.stress_period_data,
+                    )
+                    if stress_summary and stress_summary.get("packages"):
+                        stress_json = json.dumps(stress_summary, default=_json_serialize)
+                        storage.upload_bytes(
+                            settings.minio_bucket_models,
+                            f"{output_prefix}/processed/stress_summary.json",
+                            stress_json.encode("utf-8"),
+                            content_type="application/json",
+                        )
+                        completed_stages.append("stress_summary")
+            except Exception as e:
+                print(f"Warning: Stress extraction failed: {e}")
+
             # Fallback: if listing file had no percent discrepancy lines but we
             # have budget data, compute mass balance error from CBC periods.
             if convergence_result.get("mass_balance_error_pct") is None and budget_result:

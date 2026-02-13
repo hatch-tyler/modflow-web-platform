@@ -1,0 +1,172 @@
+{
+  "package_name": "OC",
+  "description": "Output Control Package - Controls the output of head, drawdown, and budget data from a MODFLOW simulation",
+  "file_extensions": [".oc"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/oc.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Output file format and unit numbers (words method)",
+      "variables": [
+        {
+          "name": "IHEDFM",
+          "position": 0,
+          "type": "integer",
+          "description": "Format code for printing heads. 0=10G11.4, positive=fixed format, negative=free format with specified width.",
+          "tooltip": "Controls the Fortran format used when heads are printed to the listing file. Only applies to printed (text) output, not binary."
+        },
+        {
+          "name": "IDDNFM",
+          "position": 1,
+          "type": "integer",
+          "description": "Format code for printing drawdowns. Same codes as IHEDFM.",
+          "tooltip": "Controls the Fortran format used when drawdowns are printed to the listing file."
+        },
+        {
+          "name": "IHEDUN",
+          "position": 2,
+          "type": "integer",
+          "description": "Unit number for saving head output. 0=no head saved to file.",
+          "tooltip": "Fortran unit number for the binary head output file (.hds). Must match the unit assigned to the head file."
+        },
+        {
+          "name": "IDDNUN",
+          "position": 3,
+          "type": "integer",
+          "description": "Unit number for saving drawdown output. 0=no drawdown saved to file.",
+          "tooltip": "Fortran unit number for the binary drawdown output file. Must match the unit assigned to the drawdown file."
+        },
+        {
+          "name": "COMPACT_BUDGET",
+          "position": 4,
+          "type": "keyword",
+          "optional": true,
+          "description": "Keyword indicating compact budget output format. Recommended for all new models.",
+          "tooltip": "Writes cell-by-cell budget files in compact form (list format for boundary packages). Saves disk space and is required by some post-processors."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period output control (numeric method - legacy)",
+      "condition": "if using numeric OC method",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "INCODE",
+          "position": 0,
+          "type": "integer",
+          "description": "Output code. <0=same as previous period, 0=output controlled by subsequent values.",
+          "tooltip": "If < 0, output control from previous period is reused. If 0, output flags are read for this period."
+        },
+        {
+          "name": "IHDDFL",
+          "position": 1,
+          "type": "integer",
+          "description": "Head/drawdown output flag for each time step. 0=no output, nonzero=output.",
+          "tooltip": "If nonzero, heads and drawdowns are printed/saved according to IHEDFM/IDDNFM settings."
+        },
+        {
+          "name": "IBUDFL",
+          "position": 2,
+          "type": "integer",
+          "description": "Budget print flag. 0=no print, nonzero=print budget summary.",
+          "tooltip": "If nonzero, the volumetric budget summary is printed to the listing file."
+        },
+        {
+          "name": "ICBCFL",
+          "position": 3,
+          "type": "integer",
+          "description": "Cell-by-cell flow flag. 0=no output, nonzero=save cell-by-cell flows.",
+          "tooltip": "If nonzero, cell-by-cell flow terms are saved to the budget file for packages that have their save flag set."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "words",
+      "description": "Output control using words method (preferred)",
+      "repeat": "as needed per stress period",
+      "variables": [
+        {
+          "name": "PERIOD",
+          "position": 0,
+          "type": "keyword",
+          "description": "Keyword 'PERIOD' followed by stress period number to start a new period block.",
+          "tooltip": "Begins output control for a specific stress period. Format: PERIOD iperoc"
+        },
+        {
+          "name": "STEP",
+          "position": 1,
+          "type": "keyword",
+          "description": "Keyword 'STEP' followed by time step number within the period.",
+          "tooltip": "Specifies the time step for which output actions apply. Format: STEP itsoc"
+        },
+        {
+          "name": "SAVE_HEAD",
+          "position": 2,
+          "type": "keyword",
+          "optional": true,
+          "description": "Save head values to binary output file.",
+          "tooltip": "Writes head arrays to the binary head file at the specified time step."
+        },
+        {
+          "name": "SAVE_DRAWDOWN",
+          "position": 3,
+          "type": "keyword",
+          "optional": true,
+          "description": "Save drawdown values to binary output file.",
+          "tooltip": "Writes drawdown arrays to the binary drawdown file at the specified time step."
+        },
+        {
+          "name": "SAVE_BUDGET",
+          "position": 4,
+          "type": "keyword",
+          "optional": true,
+          "description": "Save cell-by-cell budget terms to binary output file.",
+          "tooltip": "Writes cell-by-cell flow terms to the binary budget file (.cbc) at the specified time step."
+        },
+        {
+          "name": "PRINT_HEAD",
+          "position": 5,
+          "type": "keyword",
+          "optional": true,
+          "description": "Print head values to the listing file.",
+          "tooltip": "Prints head arrays to the listing file using the format specified by IHEDFM."
+        },
+        {
+          "name": "PRINT_DRAWDOWN",
+          "position": 6,
+          "type": "keyword",
+          "optional": true,
+          "description": "Print drawdown values to the listing file.",
+          "tooltip": "Prints drawdown arrays to the listing file using the format specified by IDDNFM."
+        },
+        {
+          "name": "PRINT_BUDGET",
+          "position": 7,
+          "type": "keyword",
+          "optional": true,
+          "description": "Print volumetric budget summary to the listing file.",
+          "tooltip": "Prints the overall volumetric budget summary to the listing file."
+        }
+      ]
+    }
+  ]
+}

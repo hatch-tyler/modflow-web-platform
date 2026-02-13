@@ -1,0 +1,102 @@
+{
+  "package_name": "CHD",
+  "description": "Time-Variant Specified-Head Package - Simulates specified-head boundary cells where the head can vary over time",
+  "file_extensions": [".chd"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/chd.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Maximum number of CHD cells and options",
+      "variables": [
+        {
+          "name": "Option",
+          "position": 0,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keyword 'AUXILIARY' followed by auxiliary variable names, and/or 'NOPRINT'.",
+          "tooltip": "AUXILIARY adds extra columns to the stress period data. NOPRINT suppresses CHD list output to listing file."
+        },
+        {
+          "name": "MXACTC",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of specified-head cells active during any stress period.",
+          "tooltip": "Maximum number of CHD entries used simultaneously. Determines memory allocation for the package."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period data header",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "ITMP",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of CHD entries for this stress period. <0 reuses previous period data.",
+          "tooltip": "If > 0, ITMP CHD entries follow. If 0, no CHD cells active. If < 0, reuse the previous stress period's data."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Time-variant specified-head data",
+      "repeat": "ITMP (per stress period)",
+      "variables": [
+        {
+          "name": "Layer",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number of the specified-head cell (1-based).",
+          "tooltip": "Layer containing the constant-head cell. 1-based index."
+        },
+        {
+          "name": "Row",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number of the specified-head cell (1-based).",
+          "tooltip": "Row location of the constant-head cell. 1-based index."
+        },
+        {
+          "name": "Column",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number of the specified-head cell (1-based).",
+          "tooltip": "Column location of the constant-head cell. 1-based index."
+        },
+        {
+          "name": "Shead",
+          "position": 3,
+          "type": "float",
+          "description": "Head at the start of the stress period (L).",
+          "tooltip": "Specified head value at the beginning of the stress period. Head is linearly interpolated between Shead and Ehead."
+        },
+        {
+          "name": "Ehead",
+          "position": 4,
+          "type": "float",
+          "description": "Head at the end of the stress period (L).",
+          "tooltip": "Specified head value at the end of the stress period. The head varies linearly from Shead to Ehead during the period."
+        }
+      ]
+    }
+  ]
+}

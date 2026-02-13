@@ -1,0 +1,157 @@
+{
+  "package_name": "DISV",
+  "description": "Vertex Discretization",
+  "file_extensions": [".disv"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options for the vertex grid, including spatial reference and units.",
+      "variables": [
+        {
+          "name": "LENGTH_UNITS",
+          "type": "keyword_choice",
+          "choices": ["UNKNOWN", "FEET", "METERS", "CENTIMETERS"],
+          "description": "Length units used for the model grid and all spatial data.",
+          "tooltip": "Specifies the length units for all spatial dimensions. Must be consistent with all input data."
+        },
+        {
+          "name": "NOGRB",
+          "type": "keyword",
+          "description": "Keyword to deactivate writing of the binary grid file.",
+          "tooltip": "When specified, the binary grid (GRB) file is not written. The GRB file contains grid connectivity information used by post-processing tools."
+        },
+        {
+          "name": "XORIGIN",
+          "type": "float",
+          "description": "X-coordinate of the origin of the model grid.",
+          "tooltip": "The x-coordinate of the grid origin in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "YORIGIN",
+          "type": "float",
+          "description": "Y-coordinate of the origin of the model grid.",
+          "tooltip": "The y-coordinate of the grid origin in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "ANGROT",
+          "type": "float",
+          "description": "Counter-clockwise rotation angle of the model grid about the origin, in degrees.",
+          "tooltip": "Rotates the grid around the origin point. A positive value rotates counter-clockwise. Default is 0.0."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Grid dimensions defining layers, cells per layer, and vertices.",
+      "variables": [
+        {
+          "name": "NLAY",
+          "type": "integer",
+          "description": "Number of layers in the model grid.",
+          "tooltip": "Defines the vertical discretization. Each layer can have different properties. Layers are numbered from top (1) to bottom (NLAY)."
+        },
+        {
+          "name": "NCPL",
+          "type": "integer",
+          "description": "Number of cells per layer.",
+          "tooltip": "Defines the number of 2D cells in each layer of the vertex grid. All layers have the same number of cells in plan view."
+        },
+        {
+          "name": "NVERT",
+          "type": "integer",
+          "description": "Total number of vertices used to define the 2D grid.",
+          "tooltip": "The total count of unique vertex points that define all cell boundaries. Vertices are shared between adjacent cells."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Grid elevation data and cell activity flags.",
+      "variables": [
+        {
+          "name": "TOP",
+          "type": "array_1d",
+          "shape": "NCPL",
+          "description": "Top elevation of the first model layer, an array of size NCPL.",
+          "tooltip": "Elevation of the top of layer 1 for each cell in the plan view. Typically represents the land surface or top of the aquifer system."
+        },
+        {
+          "name": "BOTM",
+          "type": "array_2d",
+          "shape": "NLAY x NCPL",
+          "description": "Bottom elevation for each cell, a 2D array of size NLAY by NCPL.",
+          "tooltip": "Bottom elevation of each cell. BOTM for layer k also serves as the top of layer k+1. Must be less than the top elevation for each cell."
+        },
+        {
+          "name": "IDOMAIN",
+          "type": "array_2d",
+          "shape": "NLAY x NCPL",
+          "description": "Integer array indicating active (1), inactive (0), or vertical pass-through (-1) cells.",
+          "tooltip": "Controls which cells are active. 1 = active (simulated), 0 = inactive (excluded), -1 = vertical pass-through. Default is 1 for all cells."
+        }
+      ]
+    },
+    {
+      "name": "VERTICES",
+      "description": "Vertex coordinate data defining all unique vertices in the 2D grid.",
+      "variables": [
+        {
+          "name": "IV",
+          "type": "integer",
+          "description": "Vertex number (one-based index).",
+          "tooltip": "Sequential identifier for each vertex, starting from 1. Referenced by cells in the CELL2D block to define cell geometry."
+        },
+        {
+          "name": "XV",
+          "type": "float",
+          "description": "X-coordinate of the vertex.",
+          "tooltip": "The x-coordinate of this vertex in model coordinates. Used with YV to define the position of cell boundaries."
+        },
+        {
+          "name": "YV",
+          "type": "float",
+          "description": "Y-coordinate of the vertex.",
+          "tooltip": "The y-coordinate of this vertex in model coordinates. Used with XV to define the position of cell boundaries."
+        }
+      ]
+    },
+    {
+      "name": "CELL2D",
+      "description": "Cell definition data linking cells to their vertices and specifying cell centers.",
+      "variables": [
+        {
+          "name": "ICELL2D",
+          "type": "integer",
+          "description": "Cell number in the plan view (one-based index).",
+          "tooltip": "Sequential identifier for each 2D cell, from 1 to NCPL. This cell is replicated across all layers."
+        },
+        {
+          "name": "XC",
+          "type": "float",
+          "description": "X-coordinate of the cell center.",
+          "tooltip": "The x-coordinate of the cell center point. Used for interpolation and output. Should be inside the cell polygon."
+        },
+        {
+          "name": "YC",
+          "type": "float",
+          "description": "Y-coordinate of the cell center.",
+          "tooltip": "The y-coordinate of the cell center point. Used for interpolation and output. Should be inside the cell polygon."
+        },
+        {
+          "name": "NCVERT",
+          "type": "integer",
+          "description": "Number of vertices that define the cell boundary.",
+          "tooltip": "The count of vertices for this cell. The vertices must be listed in clockwise order. Minimum is 3 (triangle)."
+        },
+        {
+          "name": "ICVERT",
+          "type": "array_1d",
+          "shape": "NCVERT",
+          "description": "Array of vertex numbers (one-based) defining the cell boundary in clockwise order.",
+          "tooltip": "List of vertex indices from the VERTICES block that form this cell's boundary. Must be listed in clockwise order. The polygon is automatically closed."
+        }
+      ]
+    }
+  ]
+}

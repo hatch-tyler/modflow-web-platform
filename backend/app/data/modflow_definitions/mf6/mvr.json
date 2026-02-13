@@ -1,0 +1,123 @@
+{
+  "package_name": "MVR",
+  "description": "Water Mover",
+  "file_extensions": [".mvr"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling water mover package behavior and output.",
+      "variables": [
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print water mover input data to the listing file.",
+          "tooltip": "When specified, water mover data read for each stress period is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print water mover flow rates to the listing file.",
+          "tooltip": "When specified, computed water mover flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "BUDGET FILEOUT",
+          "type": "string",
+          "description": "Name of the binary file for writing detailed MVR budget output.",
+          "tooltip": "Specifies the file name for saving the detailed water mover budget showing all transfers between packages."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Dimensions defining maximum number of water movers and participating packages.",
+      "variables": [
+        {
+          "name": "MAXMVR",
+          "type": "integer",
+          "description": "Maximum number of water mover entries in any stress period.",
+          "tooltip": "Sets the maximum number of individual water transfers that can be specified in any single stress period. Used for memory allocation."
+        },
+        {
+          "name": "MAXPACKAGES",
+          "type": "integer",
+          "description": "Maximum number of packages that can participate in water mover transfers.",
+          "tooltip": "Sets the maximum number of packages that can be providers or receivers in water mover operations. Must be at least as large as the number of entries in the PACKAGES block."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGES",
+      "description": "List of packages participating in water mover operations.",
+      "variables": [
+        {
+          "name": "MNAME",
+          "type": "string",
+          "description": "Model name containing the package (for multi-model simulations).",
+          "tooltip": "The name of the GWF model containing the package. For single-model simulations, this is the model name defined in the simulation name file."
+        },
+        {
+          "name": "PNAME",
+          "type": "string",
+          "description": "Package name that participates in water mover transfers.",
+          "tooltip": "The name of the package (e.g., WEL-1, SFR-1, LAK-1) that can provide or receive water. The package must have MOVER specified in its OPTIONS block."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying individual water transfers between package features.",
+      "variables": [
+        {
+          "name": "MNAME1",
+          "type": "string",
+          "description": "Model name of the provider package.",
+          "tooltip": "The model name containing the package that provides water. For single-model simulations, use the model name from the simulation name file."
+        },
+        {
+          "name": "PNAME1",
+          "type": "string",
+          "description": "Package name of the provider.",
+          "tooltip": "The name of the package providing water (e.g., SFR-1). Must be listed in the PACKAGES block."
+        },
+        {
+          "name": "ID1",
+          "type": "integer",
+          "description": "Feature number within the provider package.",
+          "tooltip": "The reach, well, lake, or other feature number within the provider package. One-based index."
+        },
+        {
+          "name": "MNAME2",
+          "type": "string",
+          "description": "Model name of the receiver package.",
+          "tooltip": "The model name containing the package that receives water."
+        },
+        {
+          "name": "PNAME2",
+          "type": "string",
+          "description": "Package name of the receiver.",
+          "tooltip": "The name of the package receiving water (e.g., LAK-1). Must be listed in the PACKAGES block."
+        },
+        {
+          "name": "ID2",
+          "type": "integer",
+          "description": "Feature number within the receiver package.",
+          "tooltip": "The reach, well, lake, or other feature number within the receiver package. One-based index."
+        },
+        {
+          "name": "MVRTYPE",
+          "type": "keyword_choice",
+          "choices": ["FACTOR", "EXCESS", "THRESHOLD", "UPTO"],
+          "description": "Type of water mover calculation.",
+          "tooltip": "FACTOR moves a fraction (VALUE) of the provider's available water. EXCESS moves water above a threshold (VALUE). THRESHOLD moves all water when provider flow exceeds VALUE. UPTO moves water up to a maximum rate (VALUE)."
+        },
+        {
+          "name": "VALUE",
+          "type": "float",
+          "description": "Value associated with the MVRTYPE, with meaning dependent on the type.",
+          "tooltip": "For FACTOR, a fraction between 0 and 1. For EXCESS, a flow threshold (L3/T). For THRESHOLD, a flow threshold (L3/T). For UPTO, a maximum flow rate (L3/T)."
+        }
+      ]
+    }
+  ]
+}

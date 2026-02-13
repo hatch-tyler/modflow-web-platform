@@ -1,0 +1,101 @@
+{
+  "package_name": "GNC",
+  "description": "Ghost Node Correction Package - Corrects conductance for non-orthogonal grid connections in MODFLOW-USG by using interpolated values from ghost nodes",
+  "file_extensions": [".gnc"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "GNC dimensions and options",
+      "variables": [
+        {
+          "name": "NPGNCn",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of ghost node corrections to be specified.",
+          "tooltip": "Total number of ghost node correction entries. Each entry corrects the conductance of one non-orthogonal connection."
+        },
+        {
+          "name": "MXGNn",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of contributing nodes (ghost nodes) per correction. Typically 1 or 2.",
+          "tooltip": "Maximum number of contributing (ghost) nodes used to interpolate the corrected head at the interface. 1=single ghost node, 2=two ghost nodes for bilinear interpolation."
+        },
+        {
+          "name": "NGNCNPn",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of GNC entries not defined by parameters.",
+          "tooltip": "Number of GNC correction entries specified directly (not through parameter definitions). Typically equals NPGNCn."
+        },
+        {
+          "name": "IGHCOPT",
+          "position": 3,
+          "type": "integer",
+          "description": "Ghost node option. 1=implicit ghost node correction, 2=explicit ghost node correction.",
+          "tooltip": "1=implicit correction (correction terms in coefficient matrix, more stable). 2=explicit correction (correction in RHS, faster but potentially less stable)."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Ghost node correction data",
+      "repeat": "NPGNCn",
+      "variables": [
+        {
+          "name": "NODEJ",
+          "position": 0,
+          "type": "integer",
+          "description": "Node number of the first cell in the connection being corrected (1-based).",
+          "tooltip": "One of the two cells sharing the non-orthogonal connection. The ghost node correction adjusts flow between NODEJ and NODEM."
+        },
+        {
+          "name": "NODEM",
+          "position": 1,
+          "type": "integer",
+          "description": "Node number of the second cell in the connection being corrected (1-based).",
+          "tooltip": "The other cell sharing the non-orthogonal connection with NODEJ."
+        },
+        {
+          "name": "NODEK1",
+          "position": 2,
+          "type": "integer",
+          "description": "Node number of the first contributing (ghost) node (1-based).",
+          "tooltip": "First ghost node used to interpolate the corrected head at the face between NODEJ and NODEM. Must be a neighbor of NODEJ."
+        },
+        {
+          "name": "NODEK2",
+          "position": 3,
+          "type": "integer",
+          "optional": true,
+          "description": "Node number of the second contributing ghost node (1-based). Only if MXGNn >= 2.",
+          "tooltip": "Second ghost node for bilinear interpolation. Only read if MXGNn >= 2."
+        },
+        {
+          "name": "FLALPHAn",
+          "position": 4,
+          "type": "float",
+          "description": "Contributing factor (weight) for the ghost node correction. Range: 0 to 1.",
+          "tooltip": "Weight factor indicating the fractional contribution of the ghost node(s) to the corrected head. If MXGNn=1, single alpha value. If MXGNn=2, two alpha values separated by space (one per ghost node). Sum should be <= 1."
+        }
+      ]
+    }
+  ]
+}

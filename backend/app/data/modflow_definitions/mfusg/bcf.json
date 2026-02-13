@@ -1,0 +1,200 @@
+{
+  "package_name": "BCF",
+  "description": "Block-Centered Flow Package for USG - Legacy flow package adapted for unstructured grids with optional node-based conductance input",
+  "file_extensions": [".bcf", ".bc6"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "BCF flags, wetting options, and USG-specific flags",
+      "variables": [
+        {
+          "name": "IBCFCB",
+          "position": 0,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, cell-by-cell flow terms are written to the specified unit number. If 0, no output."
+        },
+        {
+          "name": "HDRY",
+          "position": 1,
+          "type": "float",
+          "description": "Head assigned to dry cells. Must be distinguishable from valid heads.",
+          "tooltip": "Value written to output for cells that have gone dry. Common value: -1.0E+30."
+        },
+        {
+          "name": "IWDFLG",
+          "position": 2,
+          "type": "integer",
+          "description": "Wetting capability flag. 0=inactive, nonzero=active.",
+          "tooltip": "If nonzero, wetting capability is active and wetting parameters (WETFCT, IWETIT, IHDWET) are read."
+        },
+        {
+          "name": "WETFCT",
+          "position": 3,
+          "type": "float",
+          "description": "Factor used to calculate head when a cell is wetted.",
+          "tooltip": "Head at newly wetted cell computed using WETFCT. Common: 0.1. Only read if IWDFLG != 0."
+        },
+        {
+          "name": "IWETIT",
+          "position": 4,
+          "type": "integer",
+          "description": "Iteration interval for attempting to wet cells.",
+          "tooltip": "Wetting is attempted every IWETIT iterations. Common: 1. Only read if IWDFLG != 0."
+        },
+        {
+          "name": "IHDWET",
+          "position": 5,
+          "type": "integer",
+          "description": "Flag controlling equation for initial head at wetted cells.",
+          "tooltip": "Selects which equation computes initial head at newly wetted cells. Only read if IWDFLG != 0."
+        },
+        {
+          "name": "IKVFLAG",
+          "position": 6,
+          "type": "integer",
+          "description": "Flag for vertical conductance input. 0=compute from vertical K and thickness, >0=read VCONT directly.",
+          "tooltip": "0=vertical conductance computed internally from layer K and thickness. >0=vertical conductance (VCONT) is read directly. USG-specific flag."
+        },
+        {
+          "name": "IKCFLAG",
+          "position": 7,
+          "type": "integer",
+          "description": "Flag for node-based conductance input. 0=standard arrays, >0=read node-based conductance for each connection.",
+          "tooltip": "0=read standard layer arrays (TRAN, HY, etc.). >0=read node-to-node conductance directly for unstructured connectivity. Key USG enhancement."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Layer type codes",
+      "variables": [
+        {
+          "name": "Ltype",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Layer type code. 0=confined, 1=unconfined, 2=confined (T varies), 3=confined (T varies, arithmetic avg).",
+          "tooltip": "One value per layer. Same codes as MF2005 BCF. 0=confined (constant T), 1=unconfined, 2=confined with variable T (harmonic avg), 3=variable T (arithmetic avg)."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "Column-to-row anisotropy ratio",
+      "condition": "IKCFLAG == 0",
+      "variables": [
+        {
+          "name": "TRPY",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NLAY"],
+          "description": "Anisotropy ratio for each layer (dimensionless).",
+          "tooltip": "One value per layer. Ratio of transmissivity/K in secondary direction to primary direction. 1.0=isotropic. Only read if IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Transmissivity (confined layers) or Hydraulic conductivity (unconfined layers)",
+      "condition": "IKCFLAG == 0",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "TRAN_or_HY",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Transmissivity (L^2/T) for confined layers or hydraulic conductivity (L/T) for unconfined layers.",
+          "tooltip": "Node-based array (one value per node in the layer). TRAN for Ltype 0 or 2; HY for Ltype 1 or 3. Only read if IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "array",
+      "description": "Vertical conductance between layers",
+      "condition": "IKCFLAG == 0 and NLAY > 1",
+      "repeat": "NLAY - 1",
+      "variables": [
+        {
+          "name": "VCONT",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Vertical hydraulic conductance between adjacent layers (1/T).",
+          "tooltip": "Node-based vertical leakance between layer pairs. Only read if IKCFLAG=0 and IKVFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "array",
+      "description": "Primary storage coefficient (transient)",
+      "condition": "any stress period is transient",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "SF1",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Primary storage coefficient per node. Confined=Ss*thickness, Unconfined=Sy.",
+          "tooltip": "Node-based array. For confined: storage coefficient. For unconfined: specific yield. Read for each layer."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "array",
+      "description": "Node-to-node conductance",
+      "condition": "IKCFLAG > 0",
+      "variables": [
+        {
+          "name": "CONDUCTANCE",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NJAG"],
+          "description": "Conductance for each node-to-node connection (L^2/T).",
+          "tooltip": "One value per JA entry. Directly specified conductance for each connection in the unstructured grid. Only read if IKCFLAG > 0."
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "format": "array",
+      "description": "Wetting threshold array",
+      "condition": "IWDFLG != 0 and (Ltype == 1 or Ltype == 3)",
+      "repeat": "wettable layers",
+      "variables": [
+        {
+          "name": "WETDRY",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Wetting threshold per node. |WETDRY| is threshold. Sign controls wetting direction.",
+          "tooltip": "Node-based array. Absolute value is head threshold. Positive=wet from below only. Negative=wet from below and horizontally."
+        }
+      ]
+    }
+  ]
+}

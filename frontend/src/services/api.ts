@@ -8,6 +8,7 @@ import type {
   PestParameter, PestConfig, PestResults, UploadStatus, AgentStatus,
   StructuredGridInfo,
   ZoneDefinitionSummary, ZoneDefinitionDetail, ZoneBudgetComputeResponse, ZoneBudgetProgress,
+  ConvergenceDetail, StressSummary, Refinement, BackupInfo,
 } from '../types'
 
 const API_BASE = '/api/v1'
@@ -345,6 +346,66 @@ export const zoneBudgetApi = {
 
   getResult: (projectId: string, runId: string, taskId: string) =>
     api.get(`/projects/${projectId}/runs/${runId}/results/zone-budget/result/${taskId}`).then(r => r.data),
+}
+
+// Convergence Analysis
+export const convergenceApi = {
+  getDetail: (projectId: string, runId: string) =>
+    api.get<ConvergenceDetail>(`/projects/${projectId}/runs/${runId}/results/convergence/detail`).then(r => r.data),
+
+  getStressData: (projectId: string, runId: string) =>
+    api.get<StressSummary>(`/projects/${projectId}/runs/${runId}/results/convergence/stress-data`).then(r => r.data),
+
+  getRecommendations: (projectId: string, runId: string) =>
+    api.get<{ recommendations: Refinement[] }>(`/projects/${projectId}/runs/${runId}/results/convergence/recommendations`).then(r => r.data),
+
+  applyRefinements: (projectId: string, runId: string, refinementIds: string[]) =>
+    api.post<{ backup_timestamp: string; modified_files: { file: string; refinements: string[]; backup: string }[] }>(
+      `/projects/${projectId}/runs/${runId}/results/convergence/apply-refinements`,
+      { refinement_ids: refinementIds },
+    ).then(r => r.data),
+
+  revertRefinements: (projectId: string, runId: string, backupTimestamp: string) =>
+    api.post<{ restored_files: string[]; backup_timestamp: string }>(
+      `/projects/${projectId}/runs/${runId}/results/convergence/revert-refinements`,
+      { backup_timestamp: backupTimestamp },
+    ).then(r => r.data),
+}
+
+// File Editor
+export const fileEditorApi = {
+  getContent: (projectId: string, filePath: string) =>
+    api.get<{ content: string; size: number; encoding: string }>(
+      `/projects/${projectId}/files/${encodeURIComponent(filePath)}/content`,
+    ).then(r => r.data),
+
+  saveContent: (projectId: string, filePath: string, content: string, createBackup = true) =>
+    api.put<{ saved: boolean; size: number; backup_timestamp: string | null }>(
+      `/projects/${projectId}/files/${encodeURIComponent(filePath)}/content`,
+      { content, create_backup: createBackup },
+    ).then(r => r.data),
+
+  getBackups: (projectId: string, filePath: string) =>
+    api.get<{ backups: BackupInfo[] }>(
+      `/projects/${projectId}/files/${encodeURIComponent(filePath)}/backups`,
+    ).then(r => r.data),
+
+  revert: (projectId: string, filePath: string, backupTimestamp: string) =>
+    api.post<{ reverted: boolean; content: string; size: number }>(
+      `/projects/${projectId}/files/${encodeURIComponent(filePath)}/revert`,
+      { backup_timestamp: backupTimestamp },
+    ).then(r => r.data),
+}
+
+// MODFLOW Docs / Definitions
+export const modflowDocsApi = {
+  listPackages: (modelType: string) =>
+    api.get<{ model_type: string; packages: { name: string; description: string; file_extensions: string[] }[] }>(
+      `/modflow/definitions/${modelType}`,
+    ).then(r => r.data),
+
+  getDefinition: (modelType: string, packageName: string) =>
+    api.get(`/modflow/definitions/${modelType}/${packageName.toLowerCase()}`).then(r => r.data),
 }
 
 export default api

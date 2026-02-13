@@ -1,0 +1,109 @@
+{
+  "package_name": "WEL",
+  "description": "Well Package - Simulates features such as wells that withdraw or inject water at a specified rate from individual cells",
+  "file_extensions": [".wel"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/wel.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Maximum number of wells and output unit",
+      "variables": [
+        {
+          "name": "Option",
+          "position": 0,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keyword 'AUXILIARY' followed by auxiliary variable names, and/or 'NOPRINT'.",
+          "tooltip": "AUXILIARY adds extra data columns. NOPRINT suppresses well list output. SPECIFY PHIRAMP sets the NWT head limit ramp."
+        },
+        {
+          "name": "MXACTW",
+          "position": 1,
+          "type": "integer",
+          "description": "Maximum number of wells in use during any stress period.",
+          "tooltip": "Maximum number of well entries that will be used simultaneously. Determines memory allocation."
+        },
+        {
+          "name": "IWELCB",
+          "position": 2,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit, <0=print to listing file.",
+          "tooltip": "If > 0, well flow terms saved to binary file. If < 0, printed to listing file. If 0, no output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Stress period data header",
+      "repeat": "NPER",
+      "variables": [
+        {
+          "name": "ITMP",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of well entries for this stress period. <0 reuses previous period data.",
+          "tooltip": "If > 0, ITMP well entries follow. If 0, no wells active. If < 0, reuse the previous stress period's well data."
+        },
+        {
+          "name": "NP",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of parameters active in this stress period.",
+          "tooltip": "Number of named parameters that are active during this stress period. Typically 0 if not using parameters."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Well data entries",
+      "repeat": "ITMP (per stress period)",
+      "variables": [
+        {
+          "name": "Layer",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number of the well (1-based).",
+          "tooltip": "Layer containing the well screen. 1-based index."
+        },
+        {
+          "name": "Row",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number of the well (1-based).",
+          "tooltip": "Row location of the well. 1-based index."
+        },
+        {
+          "name": "Column",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number of the well (1-based).",
+          "tooltip": "Column location of the well. 1-based index."
+        },
+        {
+          "name": "Q",
+          "position": 3,
+          "type": "float",
+          "description": "Volumetric pumping rate (L^3/T). Negative=withdrawal, positive=injection.",
+          "tooltip": "Pumping rate for the well. Negative values indicate pumping (extraction). Positive values indicate injection."
+        }
+      ]
+    }
+  ]
+}

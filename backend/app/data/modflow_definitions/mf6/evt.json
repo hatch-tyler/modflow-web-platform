@@ -1,0 +1,90 @@
+{
+  "package_name": "EVT",
+  "description": "Evapotranspiration",
+  "file_extensions": [".evt"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling evapotranspiration package behavior and output.",
+      "variables": [
+        {
+          "name": "FIXED_CELL",
+          "type": "keyword",
+          "description": "Keyword indicating that ET is always applied to the specified cell regardless of whether it is active.",
+          "tooltip": "When specified, ET is applied to the designated cell even if the cell goes dry. By default, ET is applied to the highest active cell in each vertical column."
+        },
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each ET entry.",
+          "tooltip": "One or more names of auxiliary variables read with each ET entry. Can be used for multipliers or transport concentrations."
+        },
+        {
+          "name": "READASARRAYS",
+          "type": "keyword",
+          "description": "Keyword indicating that ET data is read as grid-based arrays rather than cell-by-cell list input.",
+          "tooltip": "When specified, IEVT, SURFACE, RATE, and DEPTH are read as full grid arrays. This is the traditional MODFLOW approach. Without this keyword, data is read as a list."
+        },
+        {
+          "name": "SURF_RATE_SPECIFIED",
+          "type": "keyword",
+          "description": "Keyword indicating that the ET rate at the ET surface is specified separately from the maximum rate.",
+          "tooltip": "When specified, an additional array (PETM0) defining the proportion of the maximum ET rate at the ET surface is read. This allows for a non-zero ET rate at the surface elevation."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print ET input data to the listing file.",
+          "tooltip": "When specified, ET data read for each stress period is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print ET flow rates to the listing file.",
+          "tooltip": "When specified, computed ET flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save ET flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, ET flow terms are written to the binary budget file for post-processing."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period ET data specifying the ET surface, maximum rate, and extinction depth.",
+      "variables": [
+        {
+          "name": "IEVT",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "Layer index array indicating which layer ET is applied to at each horizontal location.",
+          "tooltip": "Integer array specifying the layer number for ET application. Only used with READASARRAYS. If not specified, ET is applied to layer 1 or the highest active cell."
+        },
+        {
+          "name": "SURFACE",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "ET surface elevation for each cell, in model length units.",
+          "tooltip": "The elevation at which the maximum ET rate occurs. Typically set to the land surface elevation. When the water table is at or above this elevation, ET occurs at the maximum rate."
+        },
+        {
+          "name": "RATE",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "Maximum ET flux rate for each cell, in units of length per time.",
+          "tooltip": "The maximum volumetric ET flux per unit area. Applied when the water table is at or above the ET surface elevation. Rate decreases linearly to zero at the extinction depth. Typical values depend on climate and vegetation."
+        },
+        {
+          "name": "DEPTH",
+          "type": "array_2d",
+          "shape": "NROW x NCOL",
+          "description": "ET extinction depth below the ET surface, in model length units.",
+          "tooltip": "The depth below the ET surface at which ET ceases. ET rate varies linearly from the maximum at the surface to zero at the extinction depth. Typical values range from 1 to 10 meters depending on root depth."
+        }
+      ]
+    }
+  ]
+}

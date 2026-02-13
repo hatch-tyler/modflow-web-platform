@@ -1,0 +1,185 @@
+{
+  "package_name": "CSUB",
+  "description": "Skeletal Storage, Compaction, and Subsidence",
+  "file_extensions": [".csub"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling CSUB package behavior, formulation, and output.",
+      "variables": [
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each interbed.",
+          "tooltip": "When specified, each interbed entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "COMPRESSION_INDICES",
+          "type": "keyword",
+          "description": "Keyword indicating that compression and recompression indices (Cc and Cr) are specified instead of elastic and inelastic skeletal storage coefficients.",
+          "tooltip": "When specified, SSV_CC and SSVC_CR in PACKAGEDATA are interpreted as compression index (Cc) and recompression index (Cr), and void ratio-based calculations are used."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print CSUB input data to the listing file.",
+          "tooltip": "When specified, interbed and coarse-grained material data is echoed to the listing file for verification."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save CSUB flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, compaction and storage flow terms are written to the binary budget file."
+        },
+        {
+          "name": "GAMMAW",
+          "type": "float",
+          "description": "Unit weight of water, used for effective stress calculations.",
+          "tooltip": "The specific weight of water in force per volume units consistent with the model. Default is 9806.65 N/m3 for SI units. Only used with HEAD_BASED option."
+        },
+        {
+          "name": "BETA",
+          "type": "float",
+          "description": "Compressibility of water, used for water compressibility storage calculations.",
+          "tooltip": "Compressibility of water in inverse pressure units. Default is 4.6512e-10 1/Pa for SI units. Used to compute water compressibility storage contributions."
+        },
+        {
+          "name": "HEAD_BASED",
+          "type": "keyword",
+          "description": "Keyword to use a head-based formulation instead of effective stress for compaction calculations.",
+          "tooltip": "When specified, compaction is computed based on head changes rather than effective stress changes. Simplifies the formulation but does not account for changes in geostatic stress."
+        },
+        {
+          "name": "INITIAL_PRECONSOLIDATION_HEAD",
+          "type": "keyword",
+          "description": "Keyword indicating that the preconsolidation head (PCS0) is specified as a head value rather than an effective stress.",
+          "tooltip": "When specified, PCS0 in PACKAGEDATA is read as a preconsolidation head. Otherwise, PCS0 is the preconsolidation stress."
+        },
+        {
+          "name": "NDELAYCELLS",
+          "type": "integer",
+          "description": "Number of nodes used to discretize delay interbeds.",
+          "tooltip": "Controls the resolution of the 1D vertical discretization within delay interbeds. More cells provide higher resolution but increase computation time. Typical values range from 10 to 40."
+        },
+        {
+          "name": "SPECIFIED_INITIAL_INTERBED_STATE",
+          "type": "keyword",
+          "description": "Keyword indicating that initial interbed compaction and delay bed states are specified.",
+          "tooltip": "When specified, initial compaction, preconsolidation head/stress, and delay bed heads can be read from auxiliary input. Useful for restarting simulations."
+        },
+        {
+          "name": "EFFECTIVE_STRESS_LAG",
+          "type": "keyword",
+          "description": "Keyword to use effective stress from the previous time step for computing compaction.",
+          "tooltip": "When specified, the effective stress from the end of the previous time step is used instead of the current time step. Can improve convergence for highly nonlinear problems."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Dimensions defining the number of interbeds.",
+      "variables": [
+        {
+          "name": "NINTERBEDS",
+          "type": "integer",
+          "description": "Total number of interbeds defined in the model.",
+          "tooltip": "The total count of interbed systems (both no-delay and delay) in the PACKAGEDATA block. Each interbed is associated with a specific model cell."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Grid-based coarse-grained material properties.",
+      "variables": [
+        {
+          "name": "CG_SKE_CR",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Elastic skeletal storage coefficient (or recompression index if COMPRESSION_INDICES) for the coarse-grained aquifer material.",
+          "tooltip": "Represents the elastic (recoverable) compressibility of the coarse-grained aquifer skeleton. With COMPRESSION_INDICES, this is the recompression index Cr. Typical Ske values range from 1e-6 to 1e-4."
+        },
+        {
+          "name": "CG_THETA",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Initial porosity of the coarse-grained aquifer material, dimensionless.",
+          "tooltip": "Porosity of the coarse-grained material used in void ratio and effective stress calculations. Typical values range from 0.15 to 0.40 for aquifer materials."
+        }
+      ]
+    },
+    {
+      "name": "PACKAGEDATA",
+      "description": "Interbed property data defining each interbed system.",
+      "variables": [
+        {
+          "name": "ICSUBNO",
+          "type": "integer",
+          "description": "Interbed number (sequential, one-based identifier).",
+          "tooltip": "Unique identifier for each interbed, numbered from 1 to NINTERBEDS."
+        },
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the interbed location.",
+          "tooltip": "Identifies the model cell containing this interbed. Multiple interbeds can be assigned to the same cell."
+        },
+        {
+          "name": "CDELAY",
+          "type": "keyword_choice",
+          "choices": ["NODELAY", "DELAY"],
+          "description": "Delay type for the interbed.",
+          "tooltip": "NODELAY for interbeds where compaction occurs instantaneously (thin clay layers). DELAY for thick clay layers where compaction is time-dependent due to slow drainage."
+        },
+        {
+          "name": "PCS0",
+          "type": "float",
+          "description": "Initial preconsolidation stress or head for the interbed.",
+          "tooltip": "The maximum past effective stress (or head if INITIAL_PRECONSOLIDATION_HEAD is specified). Compaction is elastic when stress is below PCS0 and inelastic when stress exceeds PCS0."
+        },
+        {
+          "name": "THICK_FRAC",
+          "type": "float",
+          "description": "Thickness or fraction of cell thickness occupied by the interbed.",
+          "tooltip": "Thickness of the interbed. If less than 1 and the cell thickness is defined, it is treated as a fraction of the cell thickness. The interbed thickness affects storage calculations."
+        },
+        {
+          "name": "RNB",
+          "type": "float",
+          "description": "Number of equivalent interbeds in the system (for delay interbeds).",
+          "tooltip": "For delay interbeds, represents the number of identical interbeds in the cell. The total interbed thickness is THICK_FRAC * RNB. For no-delay interbeds, set to 1."
+        },
+        {
+          "name": "SSV_CC",
+          "type": "float",
+          "description": "Inelastic skeletal storage coefficient (or compression index Cc if COMPRESSION_INDICES).",
+          "tooltip": "Represents the inelastic (permanent) compressibility of the interbed material. Used when effective stress exceeds PCS0. Typically 10-100 times larger than SSVC_CR."
+        },
+        {
+          "name": "SSVC_CR",
+          "type": "float",
+          "description": "Elastic skeletal storage coefficient (or recompression index Cr if COMPRESSION_INDICES).",
+          "tooltip": "Represents the elastic (recoverable) compressibility of the interbed material. Used when effective stress is below PCS0."
+        },
+        {
+          "name": "THETA",
+          "type": "float",
+          "description": "Initial porosity of the interbed material, dimensionless.",
+          "tooltip": "Porosity of the fine-grained interbed material. Typical values range from 0.30 to 0.60 for clay materials."
+        },
+        {
+          "name": "KVERT",
+          "type": "float",
+          "description": "Vertical hydraulic conductivity of the interbed, in model length per time units (delay interbeds only).",
+          "tooltip": "Controls the rate of drainage from delay interbeds. Lower values produce longer delays in compaction response. Only used for DELAY interbeds. Typical clay values: 1e-10 to 1e-8 m/s."
+        },
+        {
+          "name": "H0",
+          "type": "float",
+          "description": "Initial head in the interbed (delay interbeds only), in model length units.",
+          "tooltip": "Starting head within the delay interbed. Can differ from the aquifer head if the interbed has not fully equilibrated. Only used for DELAY interbeds."
+        }
+      ]
+    }
+  ]
+}

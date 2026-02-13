@@ -1,0 +1,347 @@
+{
+  "package_name": "LPF",
+  "description": "Layer-Property Flow Package for USG - Specifies hydraulic properties for unstructured grids with optional node-based conductance input",
+  "file_extensions": [".lpf"],
+  "doc_url": "https://www.usgs.gov/software/modflow-usg-unstructured-grid-version-modflow",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW-USG."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "LPF flags and options with USG-specific conductance flag",
+      "variables": [
+        {
+          "name": "ILPFCB",
+          "position": 0,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, cell-by-cell flow terms written to specified unit. If 0, no output."
+        },
+        {
+          "name": "HDRY",
+          "position": 1,
+          "type": "float",
+          "description": "Head assigned to cells that convert to dry during simulation.",
+          "tooltip": "Head value for dry cells in output. Common value: -1.0E+30."
+        },
+        {
+          "name": "NPLPF",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of LPF parameters. Must be 0.",
+          "tooltip": "Number of LPF parameters. Typically set to 0."
+        },
+        {
+          "name": "IKCFLAG",
+          "position": 3,
+          "type": "integer",
+          "description": "Flag for node-based conductance input. 0=standard layer arrays, >0=read node-to-node conductance directly.",
+          "tooltip": "0=read standard property arrays (HK, VKA, etc.) and compute conductance. >0=read node-to-node conductance directly for each connection. Key USG enhancement for complex grids."
+        },
+        {
+          "name": "STORAGECOEFFICIENT",
+          "position": 4,
+          "type": "keyword",
+          "optional": true,
+          "description": "SS values are storage coefficient instead of specific storage.",
+          "tooltip": "When specified, SS values are read as storage coefficient (SS * thickness) instead of specific storage."
+        },
+        {
+          "name": "CONSTANTCV",
+          "position": 5,
+          "type": "keyword",
+          "optional": true,
+          "description": "Vertical conductance constant regardless of head changes.",
+          "tooltip": "When specified, vertical conductance is not adjusted with head changes."
+        },
+        {
+          "name": "THICKSTRT",
+          "position": 6,
+          "type": "keyword",
+          "optional": true,
+          "description": "Starting head determines thickness for confined layers.",
+          "tooltip": "Cells with starting head above cell top are treated as confined using initial thickness."
+        },
+        {
+          "name": "NOCVCORRECTION",
+          "position": 7,
+          "type": "keyword",
+          "optional": true,
+          "description": "Vertical conductance correction not applied when dewatered.",
+          "tooltip": "Suppresses vertical conductance correction when head falls below overlying cell bottom."
+        },
+        {
+          "name": "NOVFC",
+          "position": 8,
+          "type": "keyword",
+          "optional": true,
+          "description": "Vertical flow correction not applied.",
+          "tooltip": "Suppresses vertical flow corrections under dewatered conditions."
+        },
+        {
+          "name": "NOPARCHECK",
+          "position": 9,
+          "type": "keyword",
+          "optional": true,
+          "description": "Parameter definitions not checked for layer compatibility.",
+          "tooltip": "Disables checking of parameter definitions against model layer types."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Layer type flags",
+      "variables": [
+        {
+          "name": "LAYTYP",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Layer type. 0=confined, >0=convertible.",
+          "tooltip": "One value per layer. 0=confined. >0=convertible (transmissivity varies with saturated thickness)."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "free",
+      "description": "Interblock transmissivity averaging method",
+      "condition": "IKCFLAG == 0",
+      "variables": [
+        {
+          "name": "LAYAVG",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Averaging method. 0=harmonic mean, 1=logarithmic mean, 2=arithmetic/logarithmic mean.",
+          "tooltip": "One value per layer. Only used when IKCFLAG=0. 0=harmonic (default), 1=logarithmic, 2=arithmetic-log."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "free",
+      "description": "Horizontal anisotropy flag",
+      "condition": "IKCFLAG == 0",
+      "variables": [
+        {
+          "name": "CHANI",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NLAY"],
+          "description": "Anisotropy ratio. >0=constant for layer, <=0=HANI array read.",
+          "tooltip": "One value per layer. If positive, uniform anisotropy ratio. If <= 0, a per-node HANI array is read. Only when IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "format": "free",
+      "description": "Vertical hydraulic conductivity flag",
+      "condition": "IKCFLAG == 0",
+      "variables": [
+        {
+          "name": "LAYVKA",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "VKA interpretation. 0=vertical K, nonzero=Kh/Kv ratio.",
+          "tooltip": "One value per layer. 0=VKA is vertical K. Nonzero=VKA is Kh/Kv ratio. Only when IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "format": "free",
+      "description": "Wetting capability flag",
+      "variables": [
+        {
+          "name": "LAYWET",
+          "position": 0,
+          "type": "integer_array",
+          "shape": ["NLAY"],
+          "description": "Wetting flag. 0=inactive, nonzero=active.",
+          "tooltip": "One value per layer. Wetting only for convertible layers (LAYTYP > 0). Must be 0 for confined layers."
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "format": "free",
+      "description": "Wetting parameters (read if any LAYWET is nonzero)",
+      "condition": "any LAYWET != 0",
+      "variables": [
+        {
+          "name": "WETFCT",
+          "position": 0,
+          "type": "float",
+          "description": "Factor for calculating head when a cell is wetted.",
+          "tooltip": "Head at newly wetted cell = BOT + WETFCT * (wetting threshold). Common: 0.1."
+        },
+        {
+          "name": "IWETIT",
+          "position": 1,
+          "type": "integer",
+          "description": "Iteration interval for wetting attempts.",
+          "tooltip": "Wetting attempted every IWETIT iterations. Common: 1."
+        },
+        {
+          "name": "IHDWET",
+          "position": 2,
+          "type": "integer",
+          "description": "Flag for initial head equation at wetted cells.",
+          "tooltip": "0=use equation 5a. Nonzero=use equation 5b."
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "format": "array",
+      "description": "Horizontal hydraulic conductivity (node-based)",
+      "condition": "IKCFLAG == 0",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "HK",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Horizontal hydraulic conductivity (L/T) for each node.",
+          "tooltip": "Node-based array (one value per node in the layer). Read for each layer when IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "format": "array",
+      "description": "Horizontal anisotropy array (node-based)",
+      "condition": "IKCFLAG == 0 and CHANI <= 0 for the layer",
+      "repeat": "layers where CHANI <= 0",
+      "variables": [
+        {
+          "name": "HANI",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Ratio of Ky/Kx for each node.",
+          "tooltip": "Node-based anisotropy ratio array. Only read for layers where CHANI <= 0 and IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "format": "array",
+      "description": "Vertical hydraulic conductivity or ratio (node-based)",
+      "condition": "IKCFLAG == 0",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "VKA",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Vertical K or Kh/Kv ratio per node, depending on LAYVKA.",
+          "tooltip": "Node-based array. If LAYVKA=0: vertical K (L/T). If LAYVKA!=0: Kh/Kv ratio. Read when IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 11,
+      "format": "array",
+      "description": "Specific storage (transient, node-based)",
+      "condition": "any stress period is transient",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "SS",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Specific storage for each node (1/L).",
+          "tooltip": "Node-based array. Typical: 1e-6 to 1e-4. Read per layer for transient stress periods."
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "format": "array",
+      "description": "Specific yield (transient, convertible layers, node-based)",
+      "condition": "transient and LAYTYP != 0",
+      "repeat": "convertible layers",
+      "variables": [
+        {
+          "name": "SY",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Specific yield for each node (dimensionless).",
+          "tooltip": "Node-based array. Typical: 0.01-0.30. Read for convertible layers in transient simulations."
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "format": "array",
+      "description": "Vertical conductivity of confining bed (node-based)",
+      "condition": "IKCFLAG == 0 and LAYCBD != 0",
+      "repeat": "layers with confining beds",
+      "variables": [
+        {
+          "name": "VKCB",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Vertical K of quasi-3D confining bed per node (L/T).",
+          "tooltip": "Node-based array for layers with confining beds. Only read when IKCFLAG=0."
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "format": "array",
+      "description": "Wetting threshold (node-based)",
+      "condition": "LAYWET != 0 and LAYTYP != 0",
+      "repeat": "wettable layers",
+      "variables": [
+        {
+          "name": "WETDRY",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NODELAY"],
+          "description": "Wetting threshold per node.",
+          "tooltip": "Node-based array. Absolute value is threshold. Positive=wet from below only. Negative=wet from below and horizontally."
+        }
+      ]
+    },
+    {
+      "number": 15,
+      "format": "array",
+      "description": "Node-to-node conductance (USG direct input)",
+      "condition": "IKCFLAG > 0",
+      "variables": [
+        {
+          "name": "CONDUCTANCE",
+          "position": 0,
+          "type": "float_array",
+          "shape": ["NJAG"],
+          "description": "Conductance for each node-to-node connection (L^2/T).",
+          "tooltip": "One value per JA entry. Directly specifies hydraulic conductance for each connection. Read instead of HK/VKA arrays when IKCFLAG > 0."
+        }
+      ]
+    }
+  ]
+}

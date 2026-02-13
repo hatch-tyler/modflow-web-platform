@@ -1,0 +1,270 @@
+{
+  "package_name": "SFR2",
+  "description": "Streamflow-Routing Package Version 2 (SFR2) - Simulates stream-aquifer interaction including streamflow routing, unsaturated flow beneath streams, and diversions",
+  "file_extensions": [".sfr"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/sfr.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Dimensions, options, and control flags for the SFR2 package",
+      "variables": [
+        {
+          "name": "NSTRM",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of stream reaches. If negative, unsaturated flow variables are read for each reach.",
+          "tooltip": "Total number of stream reaches (cells containing stream segments). If < 0, |NSTRM| reaches and unsaturated zone properties (THTS, THTI, EPS, UHC) are read in Dataset 2."
+        },
+        {
+          "name": "NSS",
+          "position": 1,
+          "type": "integer",
+          "description": "Number of stream segments.",
+          "tooltip": "Total number of stream segments in the model. Each segment consists of one or more reaches and has uniform properties."
+        },
+        {
+          "name": "NSFRPAR",
+          "position": 2,
+          "type": "integer",
+          "description": "Number of SFR parameters (usually 0).",
+          "tooltip": "Number of SFR parameters defined. Typically set to 0."
+        },
+        {
+          "name": "NPARSEG",
+          "position": 3,
+          "type": "integer",
+          "description": "Number of segments defined by parameters.",
+          "tooltip": "Number of segments defined through parameter definitions. Typically 0."
+        },
+        {
+          "name": "CONST",
+          "position": 4,
+          "type": "float",
+          "description": "Constant for Manning's equation unit conversion. 1.0 for metric, 1.486 for US customary.",
+          "tooltip": "Unit conversion constant for Manning's equation. Use 1.0 for SI units (meters, seconds) or 1.486 for US customary (feet, seconds)."
+        },
+        {
+          "name": "DLEAK",
+          "position": 5,
+          "type": "float",
+          "description": "Tolerance for stream depth convergence (L).",
+          "tooltip": "Closure tolerance for computing stream depth. Iterations stop when depth change is less than DLEAK. Typical: 0.0001."
+        },
+        {
+          "name": "ISTCB1",
+          "position": 6,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell flow terms for stream-aquifer leakage.",
+          "tooltip": "If > 0, stream leakage terms saved to binary file. If 0, no cell-by-cell output. If < 0, print to listing file."
+        },
+        {
+          "name": "ISTCB2",
+          "position": 7,
+          "type": "integer",
+          "description": "Unit number for writing streamflow output to a separate text file.",
+          "tooltip": "If > 0, stream stage, flow, and other information written to text file at this unit number. If 0, no separate output."
+        },
+        {
+          "name": "ISFROPT",
+          "position": 8,
+          "type": "integer",
+          "description": "Option for reading reach properties. 0=all read each period, 1=geometry from Dataset 2, 2=also K from Dataset 2, 3=also unsaturated from Dataset 2.",
+          "tooltip": "Controls how stream properties are specified. 0=read all per stress period. 1=geometry read once in Dataset 2. 2=plus streambed K. 3=plus unsaturated zone properties. Higher values reduce input repetition."
+        },
+        {
+          "name": "NSTRAIL",
+          "position": 9,
+          "type": "integer",
+          "optional": true,
+          "description": "Number of trailing wave increments for unsaturated flow (only if NSTRM < 0).",
+          "tooltip": "Number of trailing waves used in kinematic wave solution for unsaturated zone. Typical: 10-20. Only read if NSTRM < 0."
+        },
+        {
+          "name": "ISUZN",
+          "position": 10,
+          "type": "integer",
+          "optional": true,
+          "description": "Maximum number of vertical cells in unsaturated zone (only if NSTRM < 0).",
+          "tooltip": "Maximum number of vertical subdivisions of the unsaturated zone beneath streams. Typical: 1. Only read if NSTRM < 0."
+        },
+        {
+          "name": "NSFRSETS",
+          "position": 11,
+          "type": "integer",
+          "optional": true,
+          "description": "Maximum number of trailing wave sets (only if NSTRM < 0).",
+          "tooltip": "Maximum number of wave sets stored per reach. Typical: 30. Only read if NSTRM < 0."
+        },
+        {
+          "name": "IRTFLG",
+          "position": 12,
+          "type": "integer",
+          "optional": true,
+          "description": "Flag for transient streamflow routing. 0=steady state routing, >0=kinematic wave routing.",
+          "tooltip": "0=steady-state routing (instantaneous downstream propagation). >0=kinematic wave transient routing with NUMTIM sub-timesteps."
+        },
+        {
+          "name": "NUMTIM",
+          "position": 13,
+          "type": "integer",
+          "optional": true,
+          "description": "Number of sub-time steps for transient routing (only if IRTFLG > 0).",
+          "tooltip": "Number of equal sub-timesteps within each MODFLOW time step for transient routing. Typical: 1-10. Only read if IRTFLG > 0."
+        },
+        {
+          "name": "WEIGHT",
+          "position": 14,
+          "type": "float",
+          "optional": true,
+          "description": "Time weighting factor for transient routing (only if IRTFLG > 0). Range: 0.5-1.0.",
+          "tooltip": "Time weighting factor for the kinematic-wave solution. 0.5=Crank-Nicolson (centered). 1.0=fully implicit. Only read if IRTFLG > 0."
+        },
+        {
+          "name": "FLWTOL",
+          "position": 15,
+          "type": "float",
+          "optional": true,
+          "description": "Streamflow convergence tolerance for transient routing (only if IRTFLG > 0).",
+          "tooltip": "Tolerance for flow convergence in the transient routing solution. Typical: 1.0 (L^3/T). Only read if IRTFLG > 0."
+        },
+        {
+          "name": "Options",
+          "position": 16,
+          "type": "string",
+          "optional": true,
+          "description": "Optional keywords: REACHINPUT (read reach data per stress period), TRANSROUTE (transient routing), TABFILES (use tabular input), LOSSFACTOR.",
+          "tooltip": "REACHINPUT=read segment/reach data. TRANSROUTE=enable transient routing. TABFILES=read time series from external files."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Reach data - one entry per stream reach",
+      "repeat": "|NSTRM|",
+      "variables": [
+        {
+          "name": "KRCH",
+          "position": 0,
+          "type": "integer",
+          "description": "Layer number containing the stream reach (1-based).",
+          "tooltip": "Layer of the cell containing this stream reach."
+        },
+        {
+          "name": "IRCH",
+          "position": 1,
+          "type": "integer",
+          "description": "Row number containing the stream reach (1-based).",
+          "tooltip": "Row of the cell containing this stream reach."
+        },
+        {
+          "name": "JRCH",
+          "position": 2,
+          "type": "integer",
+          "description": "Column number containing the stream reach (1-based).",
+          "tooltip": "Column of the cell containing this stream reach."
+        },
+        {
+          "name": "ISEG",
+          "position": 3,
+          "type": "integer",
+          "description": "Segment number to which this reach belongs.",
+          "tooltip": "Segment number. Reaches within a segment must be listed sequentially from upstream to downstream."
+        },
+        {
+          "name": "IREACH",
+          "position": 4,
+          "type": "integer",
+          "description": "Sequential reach number within the segment (1-based).",
+          "tooltip": "Sequential number of this reach within its segment, starting at 1 for the upstream-most reach."
+        },
+        {
+          "name": "RCHLEN",
+          "position": 5,
+          "type": "float",
+          "description": "Length of the stream reach within the cell (L).",
+          "tooltip": "Length of the stream channel within this cell. Used to compute streambed area and Manning's equation."
+        },
+        {
+          "name": "STRTOP",
+          "position": 6,
+          "type": "float",
+          "optional": true,
+          "description": "Top elevation of the streambed (L). Read if ISFROPT >= 1.",
+          "tooltip": "Elevation of the top of the streambed. Only read when ISFROPT >= 1."
+        },
+        {
+          "name": "SLOPE",
+          "position": 7,
+          "type": "float",
+          "optional": true,
+          "description": "Stream channel slope (L/L). Read if ISFROPT >= 1.",
+          "tooltip": "Slope of the stream channel (rise/run, dimensionless). Used in Manning's equation. Only read when ISFROPT >= 1."
+        },
+        {
+          "name": "STRTHICK",
+          "position": 8,
+          "type": "float",
+          "optional": true,
+          "description": "Thickness of the streambed (L). Read if ISFROPT >= 2.",
+          "tooltip": "Thickness of the streambed sediment layer. Used to compute streambed conductance. Only read when ISFROPT >= 2."
+        },
+        {
+          "name": "STRHC1",
+          "position": 9,
+          "type": "float",
+          "optional": true,
+          "description": "Hydraulic conductivity of the streambed (L/T). Read if ISFROPT >= 2.",
+          "tooltip": "Vertical hydraulic conductivity of the streambed material. Only read when ISFROPT >= 2."
+        },
+        {
+          "name": "THTS",
+          "position": 10,
+          "type": "float",
+          "optional": true,
+          "description": "Saturated water content of unsaturated zone. Read if ISFROPT >= 3 and NSTRM < 0.",
+          "tooltip": "Saturated volumetric water content of the unsaturated zone beneath the stream. Typical: 0.30-0.45. Only read when ISFROPT >= 3."
+        },
+        {
+          "name": "THTI",
+          "position": 11,
+          "type": "float",
+          "optional": true,
+          "description": "Initial water content of unsaturated zone. Read if ISFROPT >= 3 and NSTRM < 0.",
+          "tooltip": "Initial volumetric water content of the unsaturated zone. Must be <= THTS. Only read when ISFROPT >= 3."
+        },
+        {
+          "name": "EPS",
+          "position": 12,
+          "type": "float",
+          "optional": true,
+          "description": "Brooks-Corey exponent for unsaturated zone. Read if ISFROPT >= 3 and NSTRM < 0.",
+          "tooltip": "Brooks-Corey exponent for the unsaturated zone. Typical: 3.5 for sands, 5-7 for finer materials. Only read when ISFROPT >= 3."
+        },
+        {
+          "name": "UHC",
+          "position": 13,
+          "type": "float",
+          "optional": true,
+          "description": "Saturated vertical hydraulic conductivity of unsaturated zone (L/T). Read if ISFROPT >= 3 and NSTRM < 0.",
+          "tooltip": "Vertical K of the unsaturated zone material beneath the streambed. Only read when ISFROPT >= 3."
+        }
+      ]
+    }
+  ]
+}

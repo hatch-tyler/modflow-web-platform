@@ -5,6 +5,7 @@ import UploadPage from './pages/UploadPage'
 import ViewerPage from './pages/ViewerPage'
 import ConsolePage from './pages/ConsolePage'
 import DashboardPage from './pages/DashboardPage'
+import FilesPage from './pages/FilesPage'
 import PestPage from './pages/PestPage'
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route path="viewer" element={<ViewerPage />} />
           <Route path="console" element={<ConsolePage />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="files" element={<FilesPage />} />
           <Route path="pest" element={<PestPage />} />
         </Route>
       </Route>

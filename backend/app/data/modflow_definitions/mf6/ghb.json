@@ -1,0 +1,74 @@
+{
+  "package_name": "GHB",
+  "description": "General Head Boundary",
+  "file_extensions": [".ghb"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling general head boundary package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each GHB entry.",
+          "tooltip": "One or more names of auxiliary variables read with each GHB entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the conductance.",
+          "tooltip": "The named auxiliary variable is multiplied by COND to compute the actual boundary conductance."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each GHB cell.",
+          "tooltip": "When specified, each GHB entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print GHB input data to the listing file.",
+          "tooltip": "When specified, GHB data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print GHB flow rates to the listing file.",
+          "tooltip": "When specified, computed GHB flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save GHB flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, GHB flow terms are written to the binary budget file for post-processing."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying general head boundary locations, heads, and conductances.",
+      "variables": [
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the GHB location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell where the general head boundary is applied. Flow is proportional to the difference between the boundary head and the cell head."
+        },
+        {
+          "name": "BHEAD",
+          "type": "float",
+          "description": "Boundary head for the GHB cell, in model length units.",
+          "tooltip": "The head at the external boundary source/sink. Flow into or out of the cell is computed as COND * (BHEAD - cell_head). Can represent distant water bodies, regional aquifer heads, or other external boundaries."
+        },
+        {
+          "name": "COND",
+          "type": "float",
+          "description": "Hydraulic conductance of the GHB connection, in units of length squared per time.",
+          "tooltip": "Controls the rate of flow between the boundary and the cell. Higher conductance means more flow for a given head difference. Computed as K * A / L where K is hydraulic conductivity, A is cross-sectional area, and L is flow path length."
+        }
+      ]
+    }
+  ]
+}

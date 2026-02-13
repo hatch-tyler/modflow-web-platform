@@ -1,0 +1,74 @@
+{
+  "package_name": "DRN",
+  "description": "Drain",
+  "file_extensions": [".drn"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling drain package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each drain entry.",
+          "tooltip": "One or more names of auxiliary variables read with each drain entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the drain conductance.",
+          "tooltip": "The named auxiliary variable is multiplied by COND to compute the actual drain conductance."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each drain.",
+          "tooltip": "When specified, each drain entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print drain input data to the listing file.",
+          "tooltip": "When specified, drain data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print drain flow rates to the listing file.",
+          "tooltip": "When specified, computed drain flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save drain flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, drain flow terms are written to the binary budget file for post-processing."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying drain locations, elevations, and conductances.",
+      "variables": [
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the drain location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell containing the drain. The drain only removes water from the model; it cannot add water."
+        },
+        {
+          "name": "ELEV",
+          "type": "float",
+          "description": "Drain elevation, in model length units.",
+          "tooltip": "The elevation of the drain. When the head in the cell is above this elevation, water flows out of the cell at a rate proportional to the head difference. When head is below the drain elevation, no flow occurs."
+        },
+        {
+          "name": "COND",
+          "type": "float",
+          "description": "Hydraulic conductance of the drain, in units of length squared per time.",
+          "tooltip": "Controls the rate of drainage. Flow out of the cell is COND * (cell_head - ELEV) when cell_head > ELEV, and zero otherwise. Represents the resistance to flow between the aquifer and the drain."
+        }
+      ]
+    }
+  ]
+}

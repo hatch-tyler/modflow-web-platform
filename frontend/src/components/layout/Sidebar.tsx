@@ -7,6 +7,7 @@ import {
   Box,
   Terminal,
   LayoutDashboard,
+  FileCode,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -29,6 +30,7 @@ const navigation: NavItem[] = [
   { name: '3D Viewer', href: '/viewer', icon: Box, requiresProject: true },
   { name: 'Console', href: '/console', icon: Terminal, requiresProject: true },
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, requiresProject: true },
+  { name: 'Files', href: '/files', icon: FileCode, requiresProject: true },
   { name: 'PEST / UQ', href: '/pest', icon: Settings, requiresProject: true },
 ]
 

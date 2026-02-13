@@ -1,0 +1,86 @@
+{
+  "package_name": "GNC",
+  "description": "Ghost Node Correction",
+  "file_extensions": [".gnc"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling ghost node correction package behavior and formulation.",
+      "variables": [
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print GNC input data to the listing file.",
+          "tooltip": "When specified, ghost node correction data is echoed to the listing file for verification."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print GNC-corrected flow rates to the listing file.",
+          "tooltip": "When specified, ghost node correction flow contributions are printed to the listing file for each time step."
+        },
+        {
+          "name": "IMPLICIT",
+          "type": "keyword",
+          "description": "Keyword to use an implicit formulation for ghost node corrections.",
+          "tooltip": "When specified, ghost node contributions are added to the coefficient matrix, resulting in an asymmetric matrix. Provides better convergence and accuracy for highly non-orthogonal grids. Requires BICGSTAB linear solver."
+        },
+        {
+          "name": "EXPLICIT",
+          "type": "keyword",
+          "description": "Keyword to use an explicit formulation for ghost node corrections.",
+          "tooltip": "When specified, ghost node contributions are added to the right-hand side using heads from the previous iteration. Maintains matrix symmetry (allows CG solver) but may require more iterations to converge."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Dimensions defining the number of ghost node corrections and contributing nodes.",
+      "variables": [
+        {
+          "name": "NUMGNC",
+          "type": "integer",
+          "description": "Total number of ghost node correction entries.",
+          "tooltip": "The total number of cell connections that require ghost node corrections. Each entry corrects the flow between two specific cells."
+        },
+        {
+          "name": "NUMALPHAJ",
+          "type": "integer",
+          "description": "Number of contributing nodes (ghost nodes) for each correction.",
+          "tooltip": "The number of contributing nodes used to interpolate the ghost node head for each correction. Typically 1 or 2. All corrections use the same number of contributing nodes."
+        }
+      ]
+    },
+    {
+      "name": "GNCDATA",
+      "description": "Ghost node correction data defining cell pairs and contributing nodes.",
+      "variables": [
+        {
+          "name": "CELLIDN",
+          "type": "cell_id",
+          "description": "Cell identifier for the cell on the n-side of the connection being corrected.",
+          "tooltip": "The cell where the ghost node correction adjusts the flow calculation. This is the cell from which flow is computed to the m-side cell."
+        },
+        {
+          "name": "CELLIDM",
+          "type": "cell_id",
+          "description": "Cell identifier for the cell on the m-side of the connection being corrected.",
+          "tooltip": "The cell on the opposite side of the connection from CELLIDN. The ghost node correction improves the flow calculation between these two cells."
+        },
+        {
+          "name": "CELLIDSJ",
+          "type": "cell_id_list",
+          "description": "Cell identifiers for the contributing (ghost) nodes used in the interpolation.",
+          "tooltip": "One or more cell identifiers (NUMALPHAJ entries) for cells whose heads are used to interpolate the ghost node head at the connection face. These cells provide the correction to improve flow calculation accuracy."
+        },
+        {
+          "name": "ALPHASJ",
+          "type": "float_list",
+          "description": "Interpolation weights for each contributing node, dimensionless.",
+          "tooltip": "One weight for each contributing node (NUMALPHAJ values). The ghost node head is computed as a weighted combination of the contributing node heads. Weights are typically determined from the geometric relationship between the cells."
+        }
+      ]
+    }
+  ]
+}

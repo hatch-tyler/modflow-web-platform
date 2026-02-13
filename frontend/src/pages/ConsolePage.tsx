@@ -66,7 +66,7 @@ export default function ConsolePage() {
   ])
 
   // Simulation options
-  const [saveBudget, setSaveBudget] = useState(false)
+  const [saveBudget, setSaveBudget] = useState(true)
 
   // Get active runs for this project
   const projectRuns = projectId ? getActiveRunsForProject(projectId) : []
@@ -264,7 +264,7 @@ export default function ConsolePage() {
                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <span>Save Water Budget</span>
-              <span className="text-xs text-slate-400" title="Generates CBC file for detailed water budget analysis. May increase output file size significantly for transient models.">(?)</span>
+              <span className="text-xs text-slate-400" title="Generates CBC file for water budget analysis on the Dashboard. Disable to reduce output file size if budget data is not needed.">(?)</span>
             </label>
           )}
 

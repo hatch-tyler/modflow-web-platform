@@ -1,0 +1,21 @@
+{
+  "package_name": "IC",
+  "description": "Initial Conditions",
+  "file_extensions": [".ic"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "GRIDDATA",
+      "description": "Initial head values for all cells in the model grid.",
+      "variables": [
+        {
+          "name": "STRT",
+          "type": "array_3d",
+          "shape": "NLAY x NROW x NCOL",
+          "description": "Starting head for each cell at the beginning of the simulation.",
+          "tooltip": "Initial head values used as the starting condition for the first time step. For steady-state simulations, these serve as the initial guess for the iterative solver. Should be set above cell bottoms for active cells to avoid dry cells at startup."
+        }
+      ]
+    }
+  ]
+}

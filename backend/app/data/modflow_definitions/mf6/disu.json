@@ -1,0 +1,145 @@
+{
+  "package_name": "DISU",
+  "description": "Unstructured Discretization",
+  "file_extensions": [".disu"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options for the unstructured grid, including spatial reference and units.",
+      "variables": [
+        {
+          "name": "LENGTH_UNITS",
+          "type": "keyword_choice",
+          "choices": ["UNKNOWN", "FEET", "METERS", "CENTIMETERS"],
+          "description": "Length units used for the model grid and all spatial data.",
+          "tooltip": "Specifies the length units for all spatial dimensions. Must be consistent with all input data."
+        },
+        {
+          "name": "NOGRB",
+          "type": "keyword",
+          "description": "Keyword to deactivate writing of the binary grid file.",
+          "tooltip": "When specified, the binary grid (GRB) file is not written. The GRB file contains grid connectivity information used by post-processing tools."
+        },
+        {
+          "name": "XORIGIN",
+          "type": "float",
+          "description": "X-coordinate of the origin of the model grid.",
+          "tooltip": "The x-coordinate of the grid origin in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "YORIGIN",
+          "type": "float",
+          "description": "Y-coordinate of the origin of the model grid.",
+          "tooltip": "The y-coordinate of the grid origin in a real-world coordinate system. Used for spatial referencing and GIS integration. Default is 0.0."
+        },
+        {
+          "name": "ANGROT",
+          "type": "float",
+          "description": "Counter-clockwise rotation angle of the model grid about the origin, in degrees.",
+          "tooltip": "Rotates the grid around the origin point. A positive value rotates counter-clockwise. Default is 0.0."
+        }
+      ]
+    },
+    {
+      "name": "DIMENSIONS",
+      "description": "Grid dimensions defining the number of nodes and connections.",
+      "variables": [
+        {
+          "name": "NODES",
+          "type": "integer",
+          "description": "Total number of nodes (cells) in the unstructured grid.",
+          "tooltip": "The total count of cells in the model. Each node represents a control volume where the flow equation is solved. Nodes are numbered from 1 to NODES."
+        },
+        {
+          "name": "NJA",
+          "type": "integer",
+          "description": "Total number of connections plus the number of nodes (size of the JA array).",
+          "tooltip": "The total length of the JA (connection) array, which includes one entry for each node (self-connection) plus one for each connection to a neighbor. NJA = NODES + total number of connections."
+        }
+      ]
+    },
+    {
+      "name": "GRIDDATA",
+      "description": "Grid geometry data defining cell elevations, areas, and activity.",
+      "variables": [
+        {
+          "name": "TOP",
+          "type": "array_1d",
+          "shape": "NODES",
+          "description": "Top elevation of each cell, an array of size NODES.",
+          "tooltip": "The top elevation for each cell in the unstructured grid. For cells representing the uppermost layer, this is typically the land surface or top of aquifer."
+        },
+        {
+          "name": "BOT",
+          "type": "array_1d",
+          "shape": "NODES",
+          "description": "Bottom elevation of each cell, an array of size NODES.",
+          "tooltip": "The bottom elevation for each cell. Must be less than the top elevation. The difference (TOP - BOT) defines the cell thickness."
+        },
+        {
+          "name": "AREA",
+          "type": "array_1d",
+          "shape": "NODES",
+          "description": "Horizontal area of each cell, an array of size NODES.",
+          "tooltip": "The plan-view area of each cell in length-squared units. Used for computing storage terms, recharge, and ET. Each cell can have a different area in an unstructured grid."
+        },
+        {
+          "name": "IDOMAIN",
+          "type": "array_1d",
+          "shape": "NODES",
+          "description": "Integer array indicating active (1), inactive (0), or vertical pass-through (-1) cells.",
+          "tooltip": "Controls which cells are active. 1 = active (simulated), 0 = inactive (excluded), -1 = vertical pass-through (flow passes through but no equation solved). Default is 1 for all cells."
+        }
+      ]
+    },
+    {
+      "name": "CONNECTIONDATA",
+      "description": "Cell connectivity data defining the topology of the unstructured grid.",
+      "variables": [
+        {
+          "name": "IAC",
+          "type": "array_1d",
+          "shape": "NODES",
+          "description": "Number of connections (plus one for the cell itself) for each cell.",
+          "tooltip": "For each cell, IAC is the count of connections including the cell itself. For example, a cell connected to 4 neighbors has IAC = 5. The sum of all IAC values must equal NJA."
+        },
+        {
+          "name": "JA",
+          "type": "array_1d",
+          "shape": "NJA",
+          "description": "Cell connection array listing the cell itself followed by all connected cell numbers.",
+          "tooltip": "For each cell n, JA contains IAC(n) entries: the first is the cell number n itself, followed by the connected cell numbers. Connections to cells with lower numbers are listed first (upper triangle)."
+        },
+        {
+          "name": "IHC",
+          "type": "array_1d",
+          "shape": "NJA",
+          "description": "Connection type indicator: 0 for vertical, 1 for horizontal, 2 for horizontally staggered.",
+          "tooltip": "For each connection in JA: 0 indicates a vertical connection (between layers), 1 indicates a horizontal connection with cell centers at the same elevation, 2 indicates a horizontal connection with staggered cell centers. Self-connections are set to 0."
+        },
+        {
+          "name": "CL12",
+          "type": "array_1d",
+          "shape": "NJA",
+          "description": "Distance from the cell center to the shared face with each connected cell.",
+          "tooltip": "For each connection, the distance from the cell center to the connection interface. Used to compute conductance. For vertical connections, this is the vertical distance. Self-connections are set to 0."
+        },
+        {
+          "name": "HWVA",
+          "type": "array_1d",
+          "shape": "NJA",
+          "description": "Horizontal width or vertical area of the connection face.",
+          "tooltip": "For horizontal connections (IHC=1,2), this is the width of the connection face perpendicular to flow. For vertical connections (IHC=0), this is the horizontal area of the connection. Self-connections are set to 0."
+        },
+        {
+          "name": "ANGLDEGX",
+          "type": "array_1d",
+          "shape": "NJA",
+          "description": "Angle (in degrees) between the x-axis and the line connecting two cell centers for horizontal connections.",
+          "tooltip": "The angle measured counter-clockwise from the positive x-axis to the connection direction. Used with the XT3D formulation and for anisotropy calculations. Only needed for horizontal connections. Self-connections are set to 0."
+        }
+      ]
+    }
+  ]
+}

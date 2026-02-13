@@ -1,0 +1,80 @@
+{
+  "package_name": "RIV",
+  "description": "River",
+  "file_extensions": [".riv"],
+  "doc_url": "https://modflow6.readthedocs.io/en/stable/",
+  "blocks": [
+    {
+      "name": "OPTIONS",
+      "description": "Options controlling river package behavior and output.",
+      "variables": [
+        {
+          "name": "AUXILIARY",
+          "type": "string_list",
+          "description": "Defines auxiliary variable names to be associated with each river entry.",
+          "tooltip": "One or more names of auxiliary variables read with each river entry. Can be used for transport concentrations or user-defined data."
+        },
+        {
+          "name": "AUXMULTNAME",
+          "type": "string",
+          "description": "Name of the auxiliary variable to be used as a multiplier for the river conductance.",
+          "tooltip": "The named auxiliary variable is multiplied by COND to compute the actual river conductance."
+        },
+        {
+          "name": "BOUNDNAMES",
+          "type": "keyword",
+          "description": "Keyword to activate reading of boundary names for each river cell.",
+          "tooltip": "When specified, each river entry can include an optional text name for grouping in budget reporting and observations."
+        },
+        {
+          "name": "PRINT_INPUT",
+          "type": "keyword",
+          "description": "Keyword to print river input data to the listing file.",
+          "tooltip": "When specified, river data read for each stress period is echoed to the listing file."
+        },
+        {
+          "name": "PRINT_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to print river flow rates to the listing file.",
+          "tooltip": "When specified, computed river flow rates are printed to the listing file for each time step."
+        },
+        {
+          "name": "SAVE_FLOWS",
+          "type": "keyword",
+          "description": "Keyword to save river flow terms to the cell-by-cell budget file.",
+          "tooltip": "When specified, river flow terms are written to the binary budget file for post-processing."
+        }
+      ]
+    },
+    {
+      "name": "PERIOD",
+      "description": "Stress period data specifying river cell locations, stages, conductances, and bottom elevations.",
+      "variables": [
+        {
+          "name": "CELLID",
+          "type": "cell_id",
+          "description": "Cell identifier for the river location (layer, row, column for DIS; layer, cell2d for DISV; node for DISU).",
+          "tooltip": "Identifies the model cell containing the river reach. Rivers can both add (gaining reach) and remove (losing reach) water from the model."
+        },
+        {
+          "name": "STAGE",
+          "type": "float",
+          "description": "River stage (water surface elevation), in model length units.",
+          "tooltip": "The elevation of the river water surface. When the aquifer head is above the stage, the river gains water from the aquifer. When the head is below, the river loses water to the aquifer."
+        },
+        {
+          "name": "COND",
+          "type": "float",
+          "description": "Hydraulic conductance of the riverbed, in units of length squared per time.",
+          "tooltip": "Controls the rate of flow between the river and the aquifer. Computed as K_bed * L * W / M where K_bed is riverbed hydraulic conductivity, L is reach length, W is river width, and M is riverbed thickness."
+        },
+        {
+          "name": "RBOT",
+          "type": "float",
+          "description": "Elevation of the bottom of the riverbed, in model length units.",
+          "tooltip": "When the aquifer head drops below RBOT, the seepage rate from the river becomes constant (no longer increases with declining head). This prevents unrealistic leakage rates when the aquifer disconnects from the river."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "package_name": "LAK",
+  "description": "Lake Package - Simulates the effects of lakes on the groundwater system by treating each lake as a volume of space within the model grid",
+  "file_extensions": [".lak"],
+  "doc_url": "https://water.usgs.gov/ogw/modflow/MODFLOW-2005-Guide/lak.html",
+  "datasets": [
+    {
+      "number": 0,
+      "format": "free",
+      "description": "Comment lines preceded by '#' character",
+      "variables": [
+        {
+          "name": "COMMENT",
+          "position": 0,
+          "type": "string",
+          "description": "Optional comment lines at beginning of file.",
+          "tooltip": "Lines starting with '#' are treated as comments and ignored by MODFLOW."
+        }
+      ]
+    },
+    {
+      "number": 1,
+      "format": "free",
+      "description": "Number of lakes and output unit",
+      "variables": [
+        {
+          "name": "NLAKES",
+          "position": 0,
+          "type": "integer",
+          "description": "Number of lakes simulated.",
+          "tooltip": "Total number of separate lakes in the model. Each lake is identified by a unique integer ID."
+        },
+        {
+          "name": "ILKCB",
+          "position": 1,
+          "type": "integer",
+          "description": "Unit number for cell-by-cell lake flow terms. 0=no output, >0=write to this unit.",
+          "tooltip": "If > 0, lake seepage flow terms saved to binary file. If 0, no cell-by-cell output."
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "format": "free",
+      "description": "Initial lake stages",
+      "repeat": "NLAKES",
+      "variables": [
+        {
+          "name": "STAGES",
+          "position": 0,
+          "type": "float",
+          "description": "Initial stage (water surface elevation) of the lake (L).",
+          "tooltip": "Starting water level elevation for each lake. One value per lake. For steady-state, this is the initial estimate."
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "format": "array",
+      "description": "Lake ID array for each model layer",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "LKARR",
+          "position": 0,
+          "type": "integer_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Lake identification number for each cell. 0=not a lake cell, >0=lake ID number.",
+          "tooltip": "2D integer array for each layer. Positive values identify cells as part of a specific lake. 0 indicates a non-lake cell. Read for each layer."
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "format": "array",
+      "description": "Lakebed leakance for each model layer",
+      "repeat": "NLAY",
+      "variables": [
+        {
+          "name": "BDLKNC",
+          "position": 0,
+          "type": "float_2d_array",
+          "shape": ["NROW", "NCOL"],
+          "description": "Lakebed leakance (1/T) for lake-aquifer interface cells. Leakance = K_bed / thickness_bed.",
+          "tooltip": "2D array for each layer. Nonzero values at lake boundary cells define the lakebed leakance. 0 for non-lake-boundary cells. Read for each layer."
+        }
+      ]
+    }
+  ]
+}
