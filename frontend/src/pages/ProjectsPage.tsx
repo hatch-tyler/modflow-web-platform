@@ -43,6 +43,13 @@ export default function ProjectsPage() {
         old?.filter((p) => p.id !== projectId) ?? []
       )
 
+      // Clear store references if the deleted project is currently selected
+      const store = useProjectStore.getState()
+      if (store.currentProject?.id === projectId) {
+        store.setCurrentProject(null)
+        store.setCurrentRun(null)
+      }
+
       // Return context with the snapshot
       return { previousProjects }
     },

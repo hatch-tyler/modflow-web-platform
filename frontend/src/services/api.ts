@@ -244,10 +244,14 @@ export const observationsApi = {
 // PEST++
 export const pestApi = {
   // Large models can take 5+ minutes to scan all packages for adjustable parameters
-  getParameters: (projectId: string) =>
+  getParameters: (projectId: string, forceRefresh = false) =>
     api.get<{ parameters: PestParameter[] }>(`/projects/${projectId}/pest/parameters`, {
       timeout: 10 * 60 * 1000, // 10 minutes for large models
+      params: forceRefresh ? { force_refresh: true } : undefined,
     }).then(r => r.data),
+
+  clearParameterCache: (projectId: string) =>
+    api.delete(`/projects/${projectId}/pest/parameters/cache`).then(r => r.data),
 
   getConfig: (projectId: string) =>
     api.get<{ config: PestConfig | null }>(`/projects/${projectId}/pest/config`).then(r => r.data),

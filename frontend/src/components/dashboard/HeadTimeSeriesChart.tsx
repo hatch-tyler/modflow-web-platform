@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { memo, useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, FileSpreadsheet, ChevronDown } from 'lucide-react'
@@ -20,7 +20,7 @@ interface HeadTimeSeriesChartProps {
   awaitingProgress?: PostProcessProgress
 }
 
-export default function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, compareRunId, awaitingProgress }: HeadTimeSeriesChartProps) {
+function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, compareRunId, awaitingProgress }: HeadTimeSeriesChartProps) {
   // Show awaiting data state if progress is provided and heads not yet complete
   if (awaitingProgress && !awaitingProgress.postprocess_completed?.includes('heads')) {
     return <AwaitingData dataType="timeseries" progress={awaitingProgress} height={expanded ? window.innerHeight - 160 : 350} />
@@ -373,3 +373,5 @@ export default function HeadTimeSeriesChart({ projectId, runId, summary, expande
     </div>
   )
 }
+
+export default memo(HeadTimeSeriesChart)

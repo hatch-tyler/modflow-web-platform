@@ -3,13 +3,14 @@
 import csv
 import io
 import json
+import logging
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,8 +21,13 @@ from app.models.base import get_db
 from app.models.project import Project, Run, RunStatus, RunType
 from app.services.storage import get_storage_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/projects/{project_id}/pest", tags=["pest"])
 settings = get_settings()
+
+# Bump this when parameter discovery logic changes to auto-invalidate old caches
+PARAM_CACHE_VERSION = 2
 
 
 class PestParameterConfig(BaseModel):
@@ -99,15 +105,18 @@ async def _get_project_or_404(
 @router.get("/parameters")
 async def get_available_parameters(
     project_id: UUID,
+    force_refresh: bool = Query(False, description="Force re-scan, ignoring cache"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Discover adjustable parameters from the uploaded model.
 
-    Scans model packages (LPF/UPW/NPF/STO) and returns available
-    parameter arrays with per-layer statistics and suggested bounds.
+    Scans model packages (LPF/UPW/NPF/STO/GHB/RIV/DRN/RCH/EVT) and
+    returns available parameter arrays with per-layer statistics and
+    suggested bounds.
 
     Results are cached in MinIO to avoid re-scanning on every page load.
+    Use force_refresh=true to bypass the cache.
     """
     project = await _get_project_or_404(project_id, db)
 
@@ -119,46 +128,71 @@ async def get_available_parameters(
 
     storage = get_storage_service()
 
-    # Check for cached parameters
+    # Check for cached parameters (skip if force_refresh)
     cache_path = f"projects/{project_id}/pest/parameters_cache.json"
-    if storage.object_exists(settings.minio_bucket_models, cache_path):
+    if not force_refresh and storage.object_exists(settings.minio_bucket_models, cache_path):
         try:
             cached_data = storage.download_file(settings.minio_bucket_models, cache_path)
             cached = json.loads(cached_data)
-            # Verify cache is still valid (matches current model storage path)
-            if cached.get("storage_path") == project.storage_path:
+            # Verify cache is still valid (matches storage path AND cache version)
+            if (
+                cached.get("storage_path") == project.storage_path
+                and cached.get("cache_version", 0) >= PARAM_CACHE_VERSION
+                and cached.get("parameters")  # Don't use empty cached results
+            ):
                 return {"parameters": cached["parameters"]}
         except Exception:
             pass  # Cache invalid or corrupted, re-scan
 
+    logger.info(
+        "Scanning parameters for project %s (force_refresh=%s)",
+        project_id,
+        force_refresh,
+    )
+
     from app.services.pest_setup import discover_parameters
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        model_dir = Path(temp_dir)
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir)
 
-        # Download model files
-        files = storage.list_objects(
-            settings.minio_bucket_models,
-            prefix=project.storage_path,
-            recursive=True,
-        )
-        for obj_name in files:
-            rel_path = obj_name[len(project.storage_path) :].lstrip("/")
-            if not rel_path:
-                continue
-            local_path = model_dir / rel_path
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            file_data = storage.download_file(
-                settings.minio_bucket_models, obj_name
+            # Download model files
+            files = storage.list_objects(
+                settings.minio_bucket_models,
+                prefix=project.storage_path,
+                recursive=True,
             )
-            local_path.write_bytes(file_data)
+            for obj_name in files:
+                rel_path = obj_name[len(project.storage_path) :].lstrip("/")
+                if not rel_path:
+                    continue
+                local_path = model_dir / rel_path
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                file_data = storage.download_file(
+                    settings.minio_bucket_models, obj_name
+                )
+                local_path.write_bytes(file_data)
 
-        params = discover_parameters(model_dir)
+            params = discover_parameters(model_dir)
+    except Exception as e:
+        logger.error("Parameter discovery failed for project %s: %s", project_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Parameter discovery failed: {e}",
+        )
+
+    if not params:
+        logger.warning(
+            "No parameters discovered for project %s — not caching empty result",
+            project_id,
+        )
+        return {"parameters": []}
 
     # Cache the discovered parameters
     try:
         cache_data = {
             "storage_path": project.storage_path,
+            "cache_version": PARAM_CACHE_VERSION,
             "parameters": params,
             "cached_at": datetime.utcnow().isoformat(),
         }
@@ -172,6 +206,24 @@ async def get_available_parameters(
         pass  # Non-critical if caching fails
 
     return {"parameters": params}
+
+
+@router.delete("/parameters/cache")
+async def clear_parameter_cache(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Clear cached parameter discovery results for this project."""
+    await _get_project_or_404(project_id, db)
+
+    storage = get_storage_service()
+    cache_path = f"projects/{project_id}/pest/parameters_cache.json"
+    try:
+        storage.delete_object(settings.minio_bucket_models, cache_path)
+    except Exception:
+        pass  # Ignore if already gone
+
+    return {"status": "cleared"}
 
 
 @router.get("/config")
@@ -560,6 +612,7 @@ async def stream_pest_output(
         channel = f"pest:{run_id}:output"
         history_key = f"pest:{run_id}:history"
         db_check_counter = 0
+        heartbeat_counter = 0
 
         try:
             # Subscribe first so we don't miss messages during history replay
@@ -604,7 +657,15 @@ async def stream_pest_output(
                     else:
                         yield f"data: {data}\n\n"
                     db_check_counter = 0
+                    heartbeat_counter = 0
                 else:
+                    # Send SSE heartbeat every ~15 seconds of silence to keep
+                    # the connection alive through NGINX/proxies/browsers.
+                    heartbeat_counter += 1
+                    if heartbeat_counter >= 15:
+                        heartbeat_counter = 0
+                        yield ": heartbeat\n\n"
+
                     # No message — periodically check database as fallback
                     db_check_counter += 1
                     if db_check_counter >= 10:

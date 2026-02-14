@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertTriangle, Settings, Zap } from 'lucide-react'
 import { convergenceApi } from '../../services/api'
@@ -28,7 +28,7 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'refinements', label: 'Refinements' },
 ]
 
-export default function ConvergenceAnalysis({
+function ConvergenceAnalysis({
   projectId,
   runId,
   summary: _summary,
@@ -154,3 +154,5 @@ export default function ConvergenceAnalysis({
     </div>
   )
 }
+
+export default memo(ConvergenceAnalysis)

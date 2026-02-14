@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { memo, useState, useMemo, useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, RefreshCw } from 'lucide-react'
@@ -699,7 +699,7 @@ interface WaterBudgetChartProps {
   stressPeriodData?: StressPeriodData[]
 }
 
-export default function WaterBudgetChart({ projectId, runId, summary, expanded = false, compareRunId, awaitingProgress, convergenceInfo, startDate, timeUnit, lengthUnit, stressPeriodData }: WaterBudgetChartProps) {
+function WaterBudgetChart({ projectId, runId, summary, expanded = false, compareRunId, awaitingProgress, convergenceInfo, startDate, timeUnit, lengthUnit, stressPeriodData }: WaterBudgetChartProps) {
   // Show awaiting data state if progress is provided and budget not yet complete
   if (awaitingProgress && !awaitingProgress.postprocess_completed?.includes('budget')) {
     return <AwaitingData dataType="budget" progress={awaitingProgress} height={expanded ? window.innerHeight - 160 : 400} />
@@ -1181,3 +1181,5 @@ function ZoneSelector({
     </div>
   )
 }
+
+export default memo(WaterBudgetChart)

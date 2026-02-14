@@ -1211,6 +1211,16 @@ def get_list_package_data(model, package_name: str) -> Optional[dict]:
             return _get_hfb_data(model, is_mf6, is_usg)
         elif package_name == "sfr_cond":
             return _get_sfr_cond_data(model, is_mf6, is_usg)
+        elif package_name == "ghb_cond":
+            return _get_ghb_cond_data(model, is_mf6, is_usg)
+        elif package_name == "riv_cond":
+            return _get_riv_cond_data(model, is_mf6, is_usg)
+        elif package_name == "drn_cond":
+            return _get_drn_cond_data(model, is_mf6, is_usg)
+        elif package_name == "rch":
+            return _get_rch_data(model, is_mf6, is_usg)
+        elif package_name == "evt":
+            return _get_evt_data(model, is_mf6, is_usg)
         else:
             return None
 
@@ -1410,6 +1420,284 @@ def _get_sfr_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
 
     values_arr = np.array(values)
     valid = values_arr[np.isfinite(values_arr) & (values_arr > 0)]
+
+    return {
+        "count": len(values),
+        "base_values": values_arr,
+        "stats": {
+            "mean": round(float(np.mean(valid)), 6) if valid.size > 0 else None,
+            "min": round(float(np.min(valid)), 6) if valid.size > 0 else None,
+            "max": round(float(np.max(valid)), 6) if valid.size > 0 else None,
+        },
+    }
+
+
+def _make_list_result(values: list) -> Optional[dict]:
+    """Build standard result dict for list package extractors."""
+    if not values:
+        return None
+
+    values_arr = np.array(values)
+    valid = values_arr[np.isfinite(values_arr) & (values_arr > 0)]
+
+    return {
+        "count": len(values),
+        "base_values": values_arr,
+        "stats": {
+            "mean": round(float(np.mean(valid)), 6) if valid.size > 0 else None,
+            "min": round(float(np.min(valid)), 6) if valid.size > 0 else None,
+            "max": round(float(np.max(valid)), 6) if valid.size > 0 else None,
+        },
+    }
+
+
+def _get_ghb_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
+    """
+    Extract GHB (General Head Boundary) conductance values.
+
+    MF6: model.get_package("GHB").stress_period_data['cond']
+    MF2005: model.ghb.stress_period_data[0]['cond']
+    """
+    values = []
+
+    if is_mf6:
+        try:
+            ghb = model.get_package("GHB")
+            if ghb is None:
+                return None
+            spd = ghb.stress_period_data
+            if spd is None:
+                return None
+            if hasattr(spd, 'get_data'):
+                data = spd.get_data(0)
+            else:
+                data = spd.data.get(0, None)
+            if data is None:
+                return None
+            if 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF6 GHB data: {e}")
+            return None
+    else:
+        try:
+            ghb = getattr(model, 'ghb', None)
+            if ghb is None:
+                return None
+            spd = ghb.stress_period_data
+            if spd is None:
+                return None
+            keys = sorted(spd.data.keys()) if hasattr(spd, 'data') else sorted(spd.keys())
+            if not keys:
+                return None
+            data = spd[keys[0]]
+            if data is None:
+                return None
+            if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF2005 GHB data: {e}")
+            return None
+
+    return _make_list_result(values)
+
+
+def _get_riv_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
+    """
+    Extract RIV (River) conductance values.
+
+    MF6: model.get_package("RIV").stress_period_data['cond']
+    MF2005: model.riv.stress_period_data[0]['cond']
+    """
+    values = []
+
+    if is_mf6:
+        try:
+            riv = model.get_package("RIV")
+            if riv is None:
+                return None
+            spd = riv.stress_period_data
+            if spd is None:
+                return None
+            if hasattr(spd, 'get_data'):
+                data = spd.get_data(0)
+            else:
+                data = spd.data.get(0, None)
+            if data is None:
+                return None
+            if 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF6 RIV data: {e}")
+            return None
+    else:
+        try:
+            riv = getattr(model, 'riv', None)
+            if riv is None:
+                return None
+            spd = riv.stress_period_data
+            if spd is None:
+                return None
+            keys = sorted(spd.data.keys()) if hasattr(spd, 'data') else sorted(spd.keys())
+            if not keys:
+                return None
+            data = spd[keys[0]]
+            if data is None:
+                return None
+            if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF2005 RIV data: {e}")
+            return None
+
+    return _make_list_result(values)
+
+
+def _get_drn_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
+    """
+    Extract DRN (Drain) conductance values.
+
+    MF6: model.get_package("DRN").stress_period_data['cond']
+    MF2005: model.drn.stress_period_data[0]['cond']
+    """
+    values = []
+
+    if is_mf6:
+        try:
+            drn = model.get_package("DRN")
+            if drn is None:
+                return None
+            spd = drn.stress_period_data
+            if spd is None:
+                return None
+            if hasattr(spd, 'get_data'):
+                data = spd.get_data(0)
+            else:
+                data = spd.data.get(0, None)
+            if data is None:
+                return None
+            if 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF6 DRN data: {e}")
+            return None
+    else:
+        try:
+            drn = getattr(model, 'drn', None)
+            if drn is None:
+                return None
+            spd = drn.stress_period_data
+            if spd is None:
+                return None
+            keys = sorted(spd.data.keys()) if hasattr(spd, 'data') else sorted(spd.keys())
+            if not keys:
+                return None
+            data = spd[keys[0]]
+            if data is None:
+                return None
+            if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
+                values = data['cond'].astype(float).tolist()
+        except Exception as e:
+            print(f"Error extracting MF2005 DRN data: {e}")
+            return None
+
+    return _make_list_result(values)
+
+
+def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
+    """
+    Extract Recharge rate values.
+
+    MF6: model.get_package("RCHA") or model.get_package("RCH") .recharge.get_data()
+    MF2005: model.rch.rech[0].array
+    """
+    values = []
+
+    if is_mf6:
+        try:
+            rch = model.get_package("RCHA")
+            if rch is None:
+                rch = model.get_package("RCH")
+            if rch is None:
+                return None
+            if hasattr(rch, 'recharge'):
+                data = rch.recharge.get_data()
+                if data is not None:
+                    values = np.array(data, dtype=float).flatten().tolist()
+        except Exception as e:
+            print(f"Error extracting MF6 RCH data: {e}")
+            return None
+    else:
+        try:
+            rch = getattr(model, 'rch', None)
+            if rch is None:
+                return None
+            if hasattr(rch, 'rech') and rch.rech is not None:
+                arr = rch.rech[0].array
+                if arr is not None:
+                    values = np.array(arr, dtype=float).flatten().tolist()
+        except Exception as e:
+            print(f"Error extracting MF2005 RCH data: {e}")
+            return None
+
+    if not values:
+        return None
+
+    values_arr = np.array(values)
+    valid = values_arr[np.isfinite(values_arr) & (values_arr != 0)]
+
+    return {
+        "count": len(values),
+        "base_values": values_arr,
+        "stats": {
+            "mean": round(float(np.mean(valid)), 6) if valid.size > 0 else None,
+            "min": round(float(np.min(valid)), 6) if valid.size > 0 else None,
+            "max": round(float(np.max(valid)), 6) if valid.size > 0 else None,
+        },
+    }
+
+
+def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
+    """
+    Extract Evapotranspiration rate values.
+
+    MF6: model.get_package("EVTA") or model.get_package("EVT") .rate.get_data()
+    MF2005: model.evt.evtr[0].array
+    """
+    values = []
+
+    if is_mf6:
+        try:
+            evt = model.get_package("EVTA")
+            if evt is None:
+                evt = model.get_package("EVT")
+            if evt is None:
+                return None
+            if hasattr(evt, 'rate'):
+                data = evt.rate.get_data()
+                if data is not None:
+                    values = np.array(data, dtype=float).flatten().tolist()
+        except Exception as e:
+            print(f"Error extracting MF6 EVT data: {e}")
+            return None
+    else:
+        try:
+            evt = getattr(model, 'evt', None)
+            if evt is None:
+                return None
+            if hasattr(evt, 'evtr') and evt.evtr is not None:
+                arr = evt.evtr[0].array
+                if arr is not None:
+                    values = np.array(arr, dtype=float).flatten().tolist()
+        except Exception as e:
+            print(f"Error extracting MF2005 EVT data: {e}")
+            return None
+
+    if not values:
+        return None
+
+    values_arr = np.array(values)
+    valid = values_arr[np.isfinite(values_arr) & (values_arr != 0)]
 
     return {
         "count": len(values),

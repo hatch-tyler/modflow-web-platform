@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Terminal, Play, Square, Loader2, History, CheckCircle, XCircle, Clock, Radio } from 'lucide-react'
 import clsx from 'clsx'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { projectsApi, simulationApi } from '../services/api'
 import { useRunManager } from '../store/runManager'
 import type { Run } from '../types'
@@ -174,12 +175,22 @@ export default function ConsolePage() {
     }
   }, [currentRun?.status, projectId, queryClient])
 
-  // Auto-scroll to bottom
+  // Virtualizer for console output — only renders visible lines
+  const rowVirtualizer = useVirtualizer({
+    count: displayOutput.length,
+    getScrollElement: () => terminalRef.current,
+    estimateSize: () => 20,
+    overscan: 30,
+  })
+
+  // Auto-scroll to bottom when new output arrives
+  const prevLengthRef = useRef(displayOutput.length)
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+    if (displayOutput.length > prevLengthRef.current && terminalRef.current) {
+      rowVirtualizer.scrollToIndex(displayOutput.length - 1, { align: 'end' })
     }
-  }, [displayOutput])
+    prevLengthRef.current = displayOutput.length
+  }, [displayOutput.length, rowVirtualizer])
 
   const handleStartRun = useCallback(() => {
     startMutation.mutate()
@@ -297,16 +308,35 @@ export default function ConsolePage() {
           )}
         </div>
 
-        {/* Terminal */}
+        {/* Terminal (virtualized for 10k+ lines) */}
         <div
           ref={terminalRef}
           className="flex-1 bg-slate-900 rounded-lg p-4 font-mono text-sm text-green-400 overflow-auto"
         >
-          {displayOutput.map((line, i) => (
-            <div key={i} className="whitespace-pre-wrap">
-              {line || '\u00A0'}
-            </div>
-          ))}
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+              <div
+                key={virtualRow.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+                className="whitespace-pre-wrap"
+              >
+                {displayOutput[virtualRow.index] || '\u00A0'}
+              </div>
+            ))}
+          </div>
           {isRunning && (
             <div className="flex items-center gap-2 mt-2">
               <Loader2 className="h-4 w-4 animate-spin" />

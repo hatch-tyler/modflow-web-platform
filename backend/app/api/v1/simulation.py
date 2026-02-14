@@ -263,6 +263,7 @@ async def stream_output(
         channel = f"simulation:{run_id}:output"
         history_key = f"simulation:{run_id}:history"
         db_check_counter = 0
+        heartbeat_counter = 0
 
         try:
             # Subscribe first so we don't miss messages during history replay
@@ -305,7 +306,16 @@ async def stream_output(
                     else:
                         yield f"data: {data}\n\n"
                     db_check_counter = 0
+                    heartbeat_counter = 0
                 else:
+                    # Send SSE heartbeat every ~15 seconds of silence to keep
+                    # the connection alive through NGINX/proxies/browsers.
+                    # SSE comment lines (prefixed with ':') are ignored by clients.
+                    heartbeat_counter += 1
+                    if heartbeat_counter >= 15:
+                        heartbeat_counter = 0
+                        yield ": heartbeat\n\n"
+
                     # No message — periodically check database as fallback
                     # (every ~10 seconds of silence, not every second)
                     db_check_counter += 1

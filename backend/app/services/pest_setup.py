@@ -70,6 +70,7 @@ LIST_PARAM_PROPERTIES = [
         "default_lower": 0.01,
         "default_upper": 100.0,
         "package_type": "list",
+        "multiplier_mode": "base_values",
     },
     {
         "id": "sfr_cond",
@@ -80,6 +81,62 @@ LIST_PARAM_PROPERTIES = [
         "default_lower": 0.01,
         "default_upper": 100.0,
         "package_type": "list",
+        "multiplier_mode": "base_values",
+    },
+    {
+        "id": "ghb_cond",
+        "name": "GHB Conductance",
+        "short": "GHBC",
+        "array_key": "ghb_cond",
+        "transform": "log",
+        "default_lower": 0.01,
+        "default_upper": 100.0,
+        "package_type": "list",
+        "multiplier_mode": "stress_period",
+    },
+    {
+        "id": "riv_cond",
+        "name": "River Conductance",
+        "short": "RIVC",
+        "array_key": "riv_cond",
+        "transform": "log",
+        "default_lower": 0.01,
+        "default_upper": 100.0,
+        "package_type": "list",
+        "multiplier_mode": "stress_period",
+    },
+    {
+        "id": "drn_cond",
+        "name": "Drain Conductance",
+        "short": "DRNC",
+        "array_key": "drn_cond",
+        "transform": "log",
+        "default_lower": 0.01,
+        "default_upper": 100.0,
+        "package_type": "list",
+        "multiplier_mode": "stress_period",
+    },
+    {
+        "id": "rch",
+        "name": "Recharge Rate Multiplier",
+        "short": "RCH",
+        "array_key": "rch",
+        "transform": "none",
+        "default_lower": 0.5,
+        "default_upper": 2.0,
+        "package_type": "list",
+        "multiplier_mode": "stress_period",
+    },
+    {
+        "id": "evt",
+        "name": "ET Rate Multiplier",
+        "short": "EVT",
+        "array_key": "evt",
+        "transform": "none",
+        "default_lower": 0.5,
+        "default_upper": 2.0,
+        "package_type": "list",
+        "multiplier_mode": "stress_period",
     },
 ]
 
@@ -268,18 +325,27 @@ def build_pest_workspace(
         approach = param.get("approach", "multiplier")
 
         if package_type == "list":
-            # List-based parameters (HFB, SFR)
+            # List-based parameters (HFB, SFR, GHB, RIV, DRN, RCH, EVT)
             pname = param["property"]  # No layer suffix
             pkg_data = get_list_package_data(model, param["property"])
             if pkg_data is None:
                 continue
 
-            # Save base values
-            np.save(base_arrays_dir / f"{pname}_base.npy", pkg_data["base_values"])
+            # Look up multiplier_mode from LIST_PARAM_PROPERTIES
+            mult_mode = "base_values"
+            for lpp in LIST_PARAM_PROPERTIES:
+                if lpp["id"] == param["property"]:
+                    mult_mode = lpp.get("multiplier_mode", "base_values")
+                    break
+
+            if mult_mode == "base_values":
+                # Save base values as .npy for HFB/SFR
+                np.save(base_arrays_dir / f"{pname}_base.npy", pkg_data["base_values"])
 
             list_param_info[pname] = {
                 "property": param["property"],
                 "count": pkg_data["count"],
+                "multiplier_mode": mult_mode,
             }
             param_info[pname] = {
                 "property": param["property"],
@@ -594,18 +660,24 @@ def main():
         new_arr = base * mult
         _set_array(model, model_type, pinfo["property"], pinfo["layer"], new_arr)
 
-    # Apply list-based multipliers (HFB, SFR)
+    # Apply list-based multipliers (HFB, SFR, GHB, RIV, DRN, RCH, EVT)
     for pname, linfo in list_param_info.items():
         if pname not in param_values:
             continue
         mult = param_values[pname]
-        base_file = os.path.join("base_arrays", f"{pname}_base.npy")
-        if not os.path.exists(base_file):
-            continue
+        mult_mode = linfo.get("multiplier_mode", "base_values")
 
-        base = np.load(base_file)
-        new_vals = base * mult
-        _set_list_package(model, model_type, linfo["property"], new_vals)
+        if mult_mode == "stress_period":
+            # Stress-period multipliers: apply directly to model package
+            _set_list_package_multiplier(model, model_type, linfo["property"], mult)
+        else:
+            # Base-values mode: load saved .npy and multiply
+            base_file = os.path.join("base_arrays", f"{pname}_base.npy")
+            if not os.path.exists(base_file):
+                continue
+            base = np.load(base_file)
+            new_vals = base * mult
+            _set_list_package(model, model_type, linfo["property"], new_vals)
 
     # Write modified model
     if model_type == "mf6":
@@ -770,6 +842,165 @@ def _set_sfr_cond_values(model, model_type, new_vals):
                     reach_data['strhc1'] = new_vals.astype(reach_data['strhc1'].dtype)
         except Exception as e:
             print(f"Warning: Could not set SFR values: {e}")
+
+
+def _set_list_package_multiplier(model, model_type, prop, mult):
+    """Apply a multiplier directly to a stress-period-varying package."""
+    if prop == "ghb_cond":
+        _set_ghb_cond_multiplier(model, model_type, mult)
+    elif prop == "riv_cond":
+        _set_riv_cond_multiplier(model, model_type, mult)
+    elif prop == "drn_cond":
+        _set_drn_cond_multiplier(model, model_type, mult)
+    elif prop == "rch":
+        _set_rch_multiplier(model, model_type, mult)
+    elif prop == "evt":
+        _set_evt_multiplier(model, model_type, mult)
+
+
+def _set_ghb_cond_multiplier(model, model_type, mult):
+    """Multiply GHB conductance across all stress periods."""
+    try:
+        if model_type == "mf6":
+            ghb = model.get_package("GHB")
+            if ghb is None:
+                return
+            spd = ghb.stress_period_data
+            if spd is None:
+                return
+            nper = model.simulation.tdis.nper.data if hasattr(model, 'simulation') else 1
+            for kper in range(nper):
+                try:
+                    data = spd.get_data(kper)
+                    if data is not None and 'cond' in data.dtype.names:
+                        data['cond'] = data['cond'] * mult
+                        spd.set_data(data, kper)
+                except Exception:
+                    pass
+        else:
+            ghb = getattr(model, 'ghb', None)
+            if ghb is None:
+                return
+            for kper in list(ghb.stress_period_data.data.keys()):
+                data = ghb.stress_period_data[kper]
+                if data is not None and 'cond' in data.dtype.names:
+                    data['cond'] = data['cond'] * mult
+    except Exception as e:
+        print(f"Warning: Could not set GHB multiplier: {e}")
+
+
+def _set_riv_cond_multiplier(model, model_type, mult):
+    """Multiply RIV conductance across all stress periods."""
+    try:
+        if model_type == "mf6":
+            riv = model.get_package("RIV")
+            if riv is None:
+                return
+            spd = riv.stress_period_data
+            if spd is None:
+                return
+            nper = model.simulation.tdis.nper.data if hasattr(model, 'simulation') else 1
+            for kper in range(nper):
+                try:
+                    data = spd.get_data(kper)
+                    if data is not None and 'cond' in data.dtype.names:
+                        data['cond'] = data['cond'] * mult
+                        spd.set_data(data, kper)
+                except Exception:
+                    pass
+        else:
+            riv = getattr(model, 'riv', None)
+            if riv is None:
+                return
+            for kper in list(riv.stress_period_data.data.keys()):
+                data = riv.stress_period_data[kper]
+                if data is not None and 'cond' in data.dtype.names:
+                    data['cond'] = data['cond'] * mult
+    except Exception as e:
+        print(f"Warning: Could not set RIV multiplier: {e}")
+
+
+def _set_drn_cond_multiplier(model, model_type, mult):
+    """Multiply DRN conductance across all stress periods."""
+    try:
+        if model_type == "mf6":
+            drn = model.get_package("DRN")
+            if drn is None:
+                return
+            spd = drn.stress_period_data
+            if spd is None:
+                return
+            nper = model.simulation.tdis.nper.data if hasattr(model, 'simulation') else 1
+            for kper in range(nper):
+                try:
+                    data = spd.get_data(kper)
+                    if data is not None and 'cond' in data.dtype.names:
+                        data['cond'] = data['cond'] * mult
+                        spd.set_data(data, kper)
+                except Exception:
+                    pass
+        else:
+            drn = getattr(model, 'drn', None)
+            if drn is None:
+                return
+            for kper in list(drn.stress_period_data.data.keys()):
+                data = drn.stress_period_data[kper]
+                if data is not None and 'cond' in data.dtype.names:
+                    data['cond'] = data['cond'] * mult
+    except Exception as e:
+        print(f"Warning: Could not set DRN multiplier: {e}")
+
+
+def _set_rch_multiplier(model, model_type, mult):
+    """Multiply Recharge rate array."""
+    try:
+        if model_type == "mf6":
+            rch = model.get_package("RCHA")
+            if rch is None:
+                rch = model.get_package("RCH")
+            if rch is None:
+                return
+            if hasattr(rch, 'recharge'):
+                data = rch.recharge.get_data()
+                if data is not None:
+                    rch.recharge.set_data(np.array(data) * mult)
+        else:
+            rch = getattr(model, 'rch', None)
+            if rch is None:
+                return
+            if hasattr(rch, 'rech') and rch.rech is not None:
+                for kper in range(len(rch.rech)):
+                    arr = rch.rech[kper].array
+                    if arr is not None:
+                        rch.rech[kper] = arr * mult
+    except Exception as e:
+        print(f"Warning: Could not set RCH multiplier: {e}")
+
+
+def _set_evt_multiplier(model, model_type, mult):
+    """Multiply Evapotranspiration rate array."""
+    try:
+        if model_type == "mf6":
+            evt = model.get_package("EVTA")
+            if evt is None:
+                evt = model.get_package("EVT")
+            if evt is None:
+                return
+            if hasattr(evt, 'rate'):
+                data = evt.rate.get_data()
+                if data is not None:
+                    evt.rate.set_data(np.array(data) * mult)
+        else:
+            evt = getattr(model, 'evt', None)
+            if evt is None:
+                return
+            if hasattr(evt, 'evtr') and evt.evtr is not None:
+                for kper in range(len(evt.evtr)):
+                    arr = evt.evtr[kper].array
+                    if arr is not None:
+                        evt.evtr[kper] = arr * mult
+    except Exception as e:
+        print(f"Warning: Could not set EVT multiplier: {e}")
 
 
 def _extract_observations(model_type, obs_info):

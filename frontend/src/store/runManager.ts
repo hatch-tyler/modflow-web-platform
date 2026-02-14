@@ -19,6 +19,7 @@ export interface ActiveRun {
   runType: RunType
   status: 'running' | 'completed' | 'failed' | 'cancelled'
   startedAt: Date
+  firstConnectedAt: number // epoch ms — used for 24h reconnect ceiling
   output: string[]
   eventSource: EventSource | null
   reconnectAttempts: number
@@ -63,9 +64,12 @@ interface RunManagerState {
 const MAX_OUTPUT_LINES = 10000
 
 // SSE reconnection settings
-const MAX_RECONNECT_ATTEMPTS = 10
+// After the initial exponential backoff phase (~10 attempts), settle into
+// a steady 30-second retry interval. Give up after 24 hours absolute time.
 const INITIAL_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 30000
+const BACKOFF_PHASE_ATTEMPTS = 10
+const MAX_RECONNECT_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 export const useRunManager = create<RunManagerState>((set, get) => ({
   activeRuns: {},
@@ -121,25 +125,24 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
         }
 
         const attempts = currentRun.reconnectAttempts + 1
-        if (attempts > MAX_RECONNECT_ATTEMPTS) {
-          get().appendOutput(runId, '')
-          get().appendOutput(runId, `[Connection lost after ${MAX_RECONNECT_ATTEMPTS} reconnect attempts. Refresh the page to retry.]`)
-          set((s) => ({
-            activeRuns: {
-              ...s.activeRuns,
-              [runId]: { ...s.activeRuns[runId], eventSource: null, reconnectAttempts: attempts },
-            },
-          }))
+        const elapsed = Date.now() - currentRun.firstConnectedAt
+
+        // Give up after 24h absolute time to avoid infinite retries
+        if (elapsed >= MAX_RECONNECT_DURATION_MS) {
+          get().appendOutput(runId, `[Connection lost after 24 hours. Refresh the page to reconnect.]`)
+          get().updateStatus(runId, 'failed')
           return
         }
 
-        // Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
-        const delay = Math.min(
-          INITIAL_RECONNECT_DELAY_MS * Math.pow(2, attempts - 1),
-          MAX_RECONNECT_DELAY_MS,
-        )
+        // Exponential backoff for first N attempts, then steady 30s retries.
+        const delay = attempts <= BACKOFF_PHASE_ATTEMPTS
+          ? Math.min(
+              INITIAL_RECONNECT_DELAY_MS * Math.pow(2, attempts - 1),
+              MAX_RECONNECT_DELAY_MS,
+            )
+          : MAX_RECONNECT_DELAY_MS
 
-        get().appendOutput(runId, `[Connection lost. Reconnecting in ${(delay / 1000).toFixed(0)}s... (attempt ${attempts}/${MAX_RECONNECT_ATTEMPTS})]`)
+        get().appendOutput(runId, `[Connection lost. Reconnecting in ${(delay / 1000).toFixed(0)}s... (attempt ${attempts})]`)
 
         const timer = setTimeout(() => {
           const run = get().activeRuns[runId]
@@ -211,6 +214,7 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
       runType,
       status: 'running',
       startedAt: actualStart,
+      firstConnectedAt: Date.now(),
       output: initialOutput,
       eventSource,
       reconnectAttempts: 0,

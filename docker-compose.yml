@@ -25,6 +25,11 @@ services:
           memory: 128M
         reservations:
           memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # Frontend (React SPA - Vite dev server)
@@ -50,6 +55,38 @@ services:
           memory: 2G
         reservations:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # Database Migrations (runs before API starts)
+  # =============================================================================
+  db-migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: modflow-db-migrate
+    command: >
+      sh -c "alembic upgrade head 2>&1 || echo 'Migration skipped (no alembic config or already up to date)'"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-modflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-modflow_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-modflow_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - modflow-network
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # =============================================================================
   # Backend API (FastAPI)
@@ -59,6 +96,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: modflow-api
+    # init: true injects tini as PID 1 to properly reap zombie children.
+    # Without this, uvicorn's reloader runs as PID 1 and cannot reap its
+    # worker subprocess if it crashes, leaving a zombie and a hung server.
+    init: true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
@@ -79,10 +120,19 @@ services:
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      # Separate Redis for cache (slice cache, live results)
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_CACHE_PASSWORD=${REDIS_CACHE_PASSWORD:-redis_secret}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
     depends_on:
+      db-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      redis-cache:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -102,6 +152,11 @@ services:
           memory: 1G
         reservations:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # Celery Worker (Background Tasks - Simulations & Post-processing)
@@ -111,8 +166,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: modflow-worker
+    init: true  # Proper zombie reaping for MODFLOW subprocesses
     # Concurrency=1 to prevent OOM on large models; increase if you have more RAM
+    # Soft time limit not set — simulations can run hours. Graceful shutdown handled via SIGTERM.
     command: celery -A celery_app worker --loglevel=info --concurrency=1
+    stop_grace_period: 1800s  # 30 min grace period for long-running simulations on docker stop
     volumes:
       - ./backend:/app
       - worker-data:/tmp/modflow-runs
@@ -133,6 +191,10 @@ services:
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      # Separate Redis for cache (slice cache, live results)
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - REDIS_CACHE_PASSWORD=${REDIS_CACHE_PASSWORD:-redis_secret}
       # PEST++ parallel execution settings
       - PEST_NETWORK_MODE=${PEST_NETWORK_MODE:-false}
       - PEST_MANAGER_PORT=${PEST_MANAGER_PORT:-4004}
@@ -146,6 +208,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      redis-cache:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -166,6 +230,11 @@ services:
           memory: 3G
         reservations:
           memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # PostgreSQL Database
@@ -198,14 +267,19 @@ services:
           memory: 1G
         reservations:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
-  # Redis (Task Queue & Pub/Sub)
+  # Redis Broker (Celery task queue — noeviction to prevent silent job loss)
   # =============================================================================
   redis:
     image: redis:7-alpine
     container_name: modflow-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --maxmemory 150mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     expose:
@@ -224,9 +298,48 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 192M
         reservations:
           memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # Redis Cache (slice cache, live results — allkeys-lru for safe eviction)
+  # =============================================================================
+  redis-cache:
+    image: redis:7-alpine
+    container_name: modflow-redis-cache
+    command: redis-server --requirepass ${REDIS_CACHE_PASSWORD:-redis_secret} --maxmemory 150mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-cache-data:/data
+    expose:
+      - "6379"
+    ports:
+      - "6380:6379"  # Expose for local development
+    networks:
+      - modflow-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_CACHE_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # =============================================================================
   # MinIO Object Storage
@@ -261,6 +374,11 @@ services:
           memory: 768M
         reservations:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # =============================================================================
 # Networks
@@ -275,6 +393,7 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  redis-cache-data:
   minio-data:
   worker-data:
   frontend-node-modules:

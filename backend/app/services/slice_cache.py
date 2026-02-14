@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Optional
 
-from app.services.redis_manager import get_sync_client
+from app.services.redis_manager import get_sync_cache_client
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def _is_redis_available() -> bool:
         return _redis_available
 
     try:
-        client = get_sync_client()
+        client = get_sync_cache_client()
         client.ping()
         _redis_available = True
         return True
@@ -62,7 +62,7 @@ def get_cached_slice(
         return None
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_slice_cache_key(project_id, run_id, layer, kper, kstp)
         data = r.get(key)
 
@@ -102,7 +102,7 @@ def cache_slice(
         return False
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_slice_cache_key(project_id, run_id, layer, kper, kstp)
         r.setex(key, ttl, json.dumps(slice_data))
         return True
@@ -123,7 +123,7 @@ def invalidate_run_cache(project_id: str, run_id: str) -> int:
         return 0
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         pattern = f"{SLICE_KEY_PREFIX}{project_id}:{run_id}:*"
         keys = list(r.scan_iter(match=pattern))
         if keys:
@@ -157,7 +157,7 @@ def cache_timestep_index(
         return False
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_timestep_index_key(project_id, run_id)
         r.setex(key, ttl, json.dumps(index_data))
         return True
@@ -173,7 +173,7 @@ def get_cached_timestep_index(project_id: str, run_id: str) -> Optional[dict]:
         return None
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_timestep_index_key(project_id, run_id)
         data = r.get(key)
 
@@ -212,7 +212,7 @@ def cache_live_budget(
         return False
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_live_budget_key(project_id, run_id)
         r.setex(key, ttl, json.dumps(budget_data))
         return True
@@ -228,7 +228,7 @@ def get_cached_live_budget(project_id: str, run_id: str) -> Optional[dict]:
         return None
 
     try:
-        r = get_sync_client()
+        r = get_sync_cache_client()
         key = get_live_budget_key(project_id, run_id)
         data = r.get(key)
 

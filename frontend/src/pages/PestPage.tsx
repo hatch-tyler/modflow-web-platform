@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Upload,
   FileSpreadsheet,
+  RefreshCw,
 } from 'lucide-react'
 import Plot from 'react-plotly.js'
 import clsx from 'clsx'
@@ -85,15 +86,35 @@ export default function PestPage() {
     enabled: !!projectId,
   })
 
+  const [rescanning, setRescanning] = useState(false)
+
   const { data: paramsData, isLoading: paramsLoading, isFetching: paramsFetching } = useQuery({
     queryKey: ['pest-parameters', projectId],
     queryFn: () => pestApi.getParameters(projectId!),
     enabled: !!projectId && !!project?.is_valid,
-    staleTime: 10 * 60 * 1000, // 10 minutes - don't refetch frequently
-    gcTime: 30 * 60 * 1000, // Keep cached for 30 minutes
-    retry: 1, // Only retry once on failure
-    retryDelay: 5000, // Wait 5 seconds before retry
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    retryDelay: 5000,
   })
+
+  // Reset rescanning flag when fetch completes
+  useEffect(() => {
+    if (rescanning && !paramsFetching) {
+      setRescanning(false)
+    }
+  }, [rescanning, paramsFetching])
+
+  const handleRescanParameters = useCallback(async () => {
+    if (!projectId) return
+    setRescanning(true)
+    try {
+      await pestApi.clearParameterCache(projectId)
+    } catch {
+      // Cache may already be gone
+    }
+    queryClient.invalidateQueries({ queryKey: ['pest-parameters', projectId] })
+  }, [projectId, queryClient])
 
   const { data: obsData } = useQuery({
     queryKey: ['observations', projectId],
@@ -453,6 +474,8 @@ export default function PestPage() {
             selectedParams={selectedParams}
             onToggle={toggleParam}
             onUpdate={updateParam}
+            onRescan={handleRescanParameters}
+            rescanning={rescanning}
           />
         )}
         {activeTab === 'observations' && (
@@ -499,6 +522,8 @@ interface ParametersTabProps {
   selectedParams: Record<string, PestParameterConfig>
   onToggle: (param: PestParameter) => void
   onUpdate: (key: string, field: string, value: number | string) => void
+  onRescan?: () => void
+  rescanning?: boolean
 }
 
 function ParametersTab({
@@ -507,6 +532,8 @@ function ParametersTab({
   selectedParams,
   onToggle,
   onUpdate,
+  onRescan,
+  rescanning,
 }: ParametersTabProps) {
   if (loading) {
     return (
@@ -514,7 +541,7 @@ function ParametersTab({
         <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
         <span className="text-slate-700 font-medium">Scanning model for adjustable parameters...</span>
         <div className="mt-3 text-sm text-slate-500 max-w-md text-center">
-          <p>This scans all model packages (NPF, STO, HFB, SFR, etc.) to extract adjustable properties.</p>
+          <p>This scans all model packages (NPF, STO, HFB, SFR, GHB, RIV, DRN, RCH, EVT, etc.) to extract adjustable properties.</p>
           <p className="mt-2 text-xs text-slate-400">
             Large models may take several minutes. Please wait...
           </p>
@@ -525,8 +552,18 @@ function ParametersTab({
 
   if (parameters.length === 0) {
     return (
-      <div className="h-48 flex items-center justify-center text-slate-400">
-        No adjustable parameters found in this model.
+      <div className="h-48 flex flex-col items-center justify-center gap-4">
+        <span className="text-slate-400">No adjustable parameters found in this model.</span>
+        {onRescan && (
+          <button
+            onClick={onRescan}
+            disabled={rescanning}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 disabled:opacity-50"
+          >
+            <RefreshCw className={clsx('h-4 w-4', rescanning && 'animate-spin')} />
+            Rescan Model
+          </button>
+        )}
       </div>
     )
   }
@@ -544,6 +581,20 @@ function ParametersTab({
 
   return (
     <div className="space-y-6">
+      {/* Rescan button header */}
+      {onRescan && (
+        <div className="flex justify-end">
+          <button
+            onClick={onRescan}
+            disabled={rescanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 disabled:opacity-50"
+          >
+            <RefreshCw className={clsx('h-3.5 w-3.5', rescanning && 'animate-spin')} />
+            Rescan Model
+          </button>
+        </div>
+      )}
+
       {/* Layer-Based Parameters Section */}
       {Object.keys(grouped).length > 0 && (
         <div>

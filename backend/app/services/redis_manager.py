@@ -66,6 +66,7 @@ def close_all_sync() -> None:
             except Exception as e:
                 logger.warning(f"Error closing sync Redis pool: {e}")
             _sync_pool = None
+    close_cache_sync()
 
 # ── Async pool ───────────────────────────────────────────────────────────────
 
@@ -105,3 +106,82 @@ async def close_all_async() -> None:
             except Exception as e:
                 logger.warning(f"Error closing async Redis pool: {e}")
             _async_pool = None
+    await close_cache_async()
+
+
+# ── Cache Redis pools (separate instance for slice cache / live results) ─────
+
+_sync_cache_pool: Optional[redis.ConnectionPool] = None
+_sync_cache_lock = threading.Lock()
+
+
+def _get_sync_cache_pool() -> redis.ConnectionPool:
+    global _sync_cache_pool
+    if _sync_cache_pool is None:
+        with _sync_cache_lock:
+            if _sync_cache_pool is None:
+                settings = get_settings()
+                _sync_cache_pool = redis.ConnectionPool.from_url(
+                    settings.redis_cache_url,
+                    max_connections=20,
+                    decode_responses=True,
+                    socket_keepalive=True,
+                    socket_connect_timeout=5,
+                    health_check_interval=30,
+                )
+    return _sync_cache_pool
+
+
+def get_sync_cache_client() -> redis.Redis:
+    """Return a Redis client for cache operations (separate from broker)."""
+    return redis.Redis(connection_pool=_get_sync_cache_pool())
+
+
+def close_cache_sync() -> None:
+    """Disconnect the sync cache pool."""
+    global _sync_cache_pool
+    with _sync_cache_lock:
+        if _sync_cache_pool is not None:
+            try:
+                _sync_cache_pool.disconnect()
+            except Exception as e:
+                logger.warning(f"Error closing sync Redis cache pool: {e}")
+            _sync_cache_pool = None
+
+
+_async_cache_pool: Optional[aioredis.ConnectionPool] = None
+_async_cache_lock = threading.Lock()
+
+
+def _get_async_cache_pool() -> aioredis.ConnectionPool:
+    global _async_cache_pool
+    if _async_cache_pool is None:
+        with _async_cache_lock:
+            if _async_cache_pool is None:
+                settings = get_settings()
+                _async_cache_pool = aioredis.ConnectionPool.from_url(
+                    settings.redis_cache_url,
+                    max_connections=50,
+                    decode_responses=True,
+                    socket_keepalive=True,
+                    socket_connect_timeout=5,
+                    health_check_interval=30,
+                )
+    return _async_cache_pool
+
+
+async def get_async_cache_client() -> aioredis.Redis:
+    """Return an async Redis client for cache operations (separate from broker)."""
+    return aioredis.Redis(connection_pool=_get_async_cache_pool())
+
+
+async def close_cache_async() -> None:
+    """Disconnect the async cache pool."""
+    global _async_cache_pool
+    with _async_cache_lock:
+        if _async_cache_pool is not None:
+            try:
+                await _async_cache_pool.disconnect()
+            except Exception as e:
+                logger.warning(f"Error closing async Redis cache pool: {e}")
+            _async_cache_pool = None

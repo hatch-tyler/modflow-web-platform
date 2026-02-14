@@ -1,7 +1,7 @@
 """Celery application configuration."""
 
 from celery import Celery
-from celery.signals import worker_ready, worker_shutdown
+from celery.signals import worker_ready, worker_shutdown, worker_shutting_down
 
 from app.config import get_settings
 
@@ -96,6 +96,27 @@ def cleanup_orphaned_runs(sender=None, **kwargs):
                 logger.warning(f"Cleaned up {len(orphaned)} orphaned running run(s)")
     except Exception as e:
         logger.error(f"Failed to clean up orphaned runs: {e}")
+
+
+@worker_shutting_down.connect
+def graceful_shutdown(sender=None, sig=None, how=None, exitcode=None, **kwargs):
+    """Handle graceful worker shutdown.
+
+    When the worker receives SIGTERM (e.g. docker stop, deploy), Celery will:
+    1. Stop accepting new tasks
+    2. Wait for currently executing tasks to finish (up to CELERY_WORKER_TERM_TIMEOUT)
+    3. Then call worker_shutdown
+
+    We log the event so admins can see the shutdown was graceful.
+    The actual waiting is handled by Celery's warm shutdown mechanism.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Worker shutting down (signal={sig}, how={how}). "
+        "Waiting for current task to complete..."
+    )
 
 
 @worker_shutdown.connect

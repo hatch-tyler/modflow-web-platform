@@ -121,6 +121,7 @@ def get_timestep_index(
         local_path = Path(temp_dir) / "output.hds"
         storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
+        hds = None
         try:
             if is_unstructured:
                 hds = flopy.utils.HeadUFile(str(local_path))
@@ -140,8 +141,6 @@ def get_timestep_index(
             else:
                 grid_shape = list(first_data.shape)  # [nlay, nrow, ncol]
                 nlay = grid_shape[0]
-
-            hds.close()
 
             index_data = {
                 "kstpkper_list": [[int(ks), int(kp)] for ks, kp in kstpkper_list],
@@ -163,6 +162,12 @@ def get_timestep_index(
                 "kstpkper_list": [],
                 "times": [],
             }
+        finally:
+            if hds is not None:
+                try:
+                    hds.close()
+                except Exception:
+                    pass
 
 
 def extract_head_slice_on_demand(
@@ -213,6 +218,7 @@ def extract_head_slice_on_demand(
         local_path = Path(temp_dir) / "output.hds"
         storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
+        hds = None
         try:
             if is_unstructured:
                 hds = flopy.utils.HeadUFile(str(local_path))
@@ -222,7 +228,6 @@ def extract_head_slice_on_demand(
             # Verify the requested timestep exists
             kstpkper_list = hds.get_kstpkper()
             if (kstp, kper) not in kstpkper_list:
-                hds.close()
                 return {
                     "error": f"Timestep (kstp={kstp}, kper={kper}) not found",
                     "available_timesteps": [[int(ks), int(kp)] for ks, kp in kstpkper_list],
@@ -235,17 +240,13 @@ def extract_head_slice_on_demand(
                 # HeadUFile returns list of arrays per layer
                 layers_data = data if isinstance(data, list) else [data]
                 if layer >= len(layers_data):
-                    hds.close()
                     return {"error": f"Layer {layer} not found (max: {len(layers_data) - 1})"}
                 arr = np.asarray(layers_data[layer])
             else:
                 # HeadFile returns 3D array
                 if layer >= data.shape[0]:
-                    hds.close()
                     return {"error": f"Layer {layer} not found (max: {data.shape[0] - 1})"}
                 arr = data[layer]
-
-            hds.close()
 
             # Mask dry/inactive cells
             masked = np.where(
@@ -280,6 +281,12 @@ def extract_head_slice_on_demand(
 
         except Exception as e:
             return {"error": f"Error extracting head slice: {str(e)}"}
+        finally:
+            if hds is not None:
+                try:
+                    hds.close()
+                except Exception:
+                    pass
 
 
 def get_head_statistics(
@@ -334,6 +341,7 @@ def get_head_statistics(
         local_path = Path(temp_dir) / "output.hds"
         storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
+        hds = None
         try:
             if is_unstructured:
                 hds = flopy.utils.HeadUFile(str(local_path))
@@ -377,8 +385,6 @@ def get_head_statistics(
                 except Exception:
                     continue
 
-            hds.close()
-
             return {
                 "min_head": global_min,
                 "max_head": global_max,
@@ -388,3 +394,9 @@ def get_head_statistics(
 
         except Exception as e:
             return {"error": str(e)}
+        finally:
+            if hds is not None:
+                try:
+                    hds.close()
+                except Exception:
+                    pass

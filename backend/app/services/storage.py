@@ -1,10 +1,12 @@
 """MinIO object storage service with retry logic and graceful degradation."""
 
+import functools
 import io
 import logging
 import time
 from pathlib import Path
-from typing import BinaryIO, Optional
+from typing import BinaryIO, Optional, TypeVar, Callable
+from urllib3.exceptions import HTTPError, MaxRetryError, TimeoutError as Urllib3TimeoutError
 
 from minio import Minio
 from minio.error import S3Error
@@ -12,6 +14,52 @@ from minio.error import S3Error
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _retry_on_transient(
+    max_attempts: int = 4,
+    initial_delay: float = 1.0,
+    max_delay: float = 15.0,
+    description: str = "operation",
+) -> Callable:
+    """Decorator that retries MinIO operations on transient network errors.
+
+    Retries on connection errors, timeouts, and server-side errors (5xx).
+    Does NOT retry on client errors like 404 (NoSuchKey) or 403.
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            delay = initial_delay
+            last_exception = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except S3Error as e:
+                    # Only retry on server errors (5xx), not client errors (4xx)
+                    if e.code and not str(e.code).startswith("5"):
+                        raise
+                    last_exception = e
+                except (ConnectionError, OSError, HTTPError, MaxRetryError, Urllib3TimeoutError) as e:
+                    last_exception = e
+                except Exception as e:
+                    # Don't retry unknown errors
+                    raise
+
+                if attempt < max_attempts:
+                    logger.warning(
+                        f"MinIO {description} failed (attempt {attempt}/{max_attempts}): "
+                        f"{last_exception}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, max_delay)
+
+            logger.error(f"MinIO {description} failed after {max_attempts} attempts")
+            raise last_exception  # type: ignore[misc]
+        return wrapper
+    return decorator
 
 
 class StorageService:
@@ -82,6 +130,7 @@ class StorageService:
             if not self._try_ensure_buckets():
                 raise RuntimeError("MinIO storage is not available")
 
+    @_retry_on_transient(description="upload_file")
     def upload_file(
         self,
         bucket: str,
@@ -104,6 +153,9 @@ class StorageService:
             Object name/path
         """
         self._ensure_ready()
+        # Seek to start in case this is a retry with the same file handle
+        if hasattr(file_data, 'seek'):
+            file_data.seek(0)
         self.client.put_object(
             bucket,
             object_name,
@@ -129,6 +181,7 @@ class StorageService:
             content_type,
         )
 
+    @_retry_on_transient(description="download_file")
     def download_file(self, bucket: str, object_name: str) -> bytes:
         """
         Download a file from MinIO.
@@ -148,6 +201,7 @@ class StorageService:
             response.close()
             response.release_conn()
 
+    @_retry_on_transient(description="download_to_file")
     def download_to_file(
         self,
         bucket: str,
@@ -212,6 +266,7 @@ class StorageService:
             expires=timedelta(seconds=expires_seconds),
         )
 
+    @_retry_on_transient(description="download_range")
     def download_range(
         self,
         bucket: str,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import Plot from 'react-plotly.js'
 import type { ResultsSummary, PostProcessProgress } from '../../types'
 import AwaitingData from './AwaitingData'
@@ -37,7 +37,7 @@ interface ConvergencePlotProps {
   awaitingProgress?: PostProcessProgress
 }
 
-export default function ConvergencePlot({ summary, expanded = false, compareSummary, awaitingProgress }: ConvergencePlotProps) {
+function ConvergencePlot({ summary, expanded = false, compareSummary, awaitingProgress }: ConvergencePlotProps) {
   // Show awaiting data state if progress is provided and listing not yet complete
   if (awaitingProgress && !awaitingProgress.postprocess_completed?.includes('listing')) {
     return <AwaitingData dataType="listing" progress={awaitingProgress} height={expanded ? window.innerHeight - 160 : 350} />
@@ -238,3 +238,5 @@ export default function ConvergencePlot({ summary, expanded = false, compareSumm
     />
   )
 }
+
+export default memo(ConvergencePlot)

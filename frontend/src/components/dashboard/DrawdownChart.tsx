@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, Play, Pause, SkipForward, SkipBack } from 'lucide-react'
@@ -27,7 +27,7 @@ interface DrawdownChartProps {
   awaitingProgress?: PostProcessProgress
 }
 
-export default function DrawdownChart({ projectId, runId, summary, expanded = false, awaitingProgress }: DrawdownChartProps) {
+function DrawdownChart({ projectId, runId, summary, expanded = false, awaitingProgress }: DrawdownChartProps) {
   // Show awaiting data state if progress is provided and heads not yet complete
   if (awaitingProgress && !awaitingProgress.postprocess_completed?.includes('heads')) {
     return <AwaitingData dataType="drawdown" progress={awaitingProgress} height={expanded ? window.innerHeight - 200 : 400} />
@@ -464,3 +464,5 @@ export default function DrawdownChart({ projectId, runId, summary, expanded = fa
     </div>
   )
 }
+
+export default memo(DrawdownChart)

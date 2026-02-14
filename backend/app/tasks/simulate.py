@@ -1,6 +1,7 @@
 """Simulation task definitions."""
 
 import asyncio
+import logging
 import os
 import queue
 import shutil
@@ -11,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from celery import current_task
 from sqlalchemy import select
@@ -345,10 +348,14 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
 
     def publish(message: str):
         """Publish message to Redis channel and append to history list."""
-        redis_client.publish(channel, message)
-        redis_client.rpush(history_key, message)
-        # Set TTL on history (24 hours) — refreshed on each append
-        redis_client.expire(history_key, 86400)
+        try:
+            redis_client.publish(channel, message)
+            redis_client.rpush(history_key, message)
+            redis_client.ltrim(history_key, -20000, -1)
+            # Set TTL on history (24 hours) — refreshed on each append
+            redis_client.expire(history_key, 86400)
+        except Exception as e:
+            logger.warning(f"Redis publish error (simulation continues): {e}")
 
     with SessionLocal() as db:
         # Get project and run
@@ -422,8 +429,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                     local_path = model_dir / rel_path
                     local_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    file_data = storage.download_file(settings.minio_bucket_models, obj_name)
-                    local_path.write_bytes(file_data)
+                    storage.download_to_file(settings.minio_bucket_models, obj_name, local_path)
                     file_count += 1
 
                 publish(f"Downloaded {file_count} files")
@@ -551,12 +557,16 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                     if batch:
                         output_lines.extend(batch)
                         # Batched Redis operations — single round-trip
-                        pipe = redis_client.pipeline(transaction=False)
-                        for b_line in batch:
-                            pipe.publish(channel, b_line)
-                            pipe.rpush(history_key, b_line)
-                        pipe.expire(history_key, 86400)
-                        pipe.execute()
+                        try:
+                            pipe = redis_client.pipeline(transaction=False)
+                            for b_line in batch:
+                                pipe.publish(channel, b_line)
+                                pipe.rpush(history_key, b_line)
+                            pipe.ltrim(history_key, -20000, -1)
+                            pipe.expire(history_key, 86400)
+                            pipe.execute()
+                        except Exception as e:
+                            logger.warning(f"Redis pipeline error (simulation continues): {e}")
 
                     # Check cancellation every ~500 lines instead of every line
                     cancel_check_counter += len(batch)
@@ -644,11 +654,19 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
 
                 # Auto-trigger post-processing for completed runs
                 if run.status == RunStatus.COMPLETED and run.results_path:
-                    from app.tasks.postprocess import extract_results
-                    # Use quick_mode=True for fast post-processing
-                    # Head slices are fetched on-demand when requested
-                    extract_results.delay(str(run.id), str(project_id), True)
-                    publish("Post-processing queued (quick mode)...")
+                    try:
+                        from app.tasks.postprocess import extract_results
+                        # Use quick_mode=True for fast post-processing
+                        # Head slices are fetched on-demand when requested
+                        extract_results.delay(str(run.id), str(project_id), True)
+                        publish("Post-processing queued (quick mode)...")
+                    except Exception as e:
+                        # Record the failure so dashboard knows post-processing didn't start
+                        publish(f"Warning: Failed to queue post-processing: {e}")
+                        ci = run.convergence_info or {}
+                        ci["postprocess_error"] = str(e)
+                        run.convergence_info = ci
+                        db.commit()
 
                 status = "completed" if run.status == RunStatus.COMPLETED else "failed"
                 publish(f"__STATUS__:{status}")

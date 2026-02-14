@@ -57,10 +57,10 @@ class CacheService:
 
     @property
     def redis(self):
-        """Lazy initialization of Redis client via shared pool."""
+        """Lazy initialization of Redis cache client (separate from broker)."""
         if self._redis is None:
-            from app.services.redis_manager import get_sync_client
-            self._redis = get_sync_client()
+            from app.services.redis_manager import get_sync_cache_client
+            self._redis = get_sync_cache_client()
         return self._redis
 
     @property

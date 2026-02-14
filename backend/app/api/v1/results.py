@@ -716,6 +716,8 @@ async def get_grid_info(
 async def get_budget(
     project_id: UUID,
     run_id: UUID,
+    limit: Optional[int] = Query(None, ge=1, description="Max stress periods to return"),
+    offset: int = Query(0, ge=0, description="Stress period offset"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -723,6 +725,7 @@ async def get_budget(
 
     Returns record names and per-period budget data with IN/OUT totals.
     Returns quick-mode (last timestep only) data when available.
+    Supports pagination via limit/offset query parameters for large models.
     """
     run, project = await _get_run_or_404(project_id, run_id, db)
     storage = get_storage_service()
@@ -730,6 +733,19 @@ async def get_budget(
     obj_name = f"{run.results_path}/processed/budget.json"
     if storage.object_exists(settings.minio_bucket_models, obj_name):
         data = json.loads(storage.download_file(settings.minio_bucket_models, obj_name))
+
+        # Apply pagination to the periods array if present
+        if (limit is not None or offset > 0) and "periods" in data:
+            total_periods = len(data["periods"])
+            end = (offset + limit) if limit is not None else total_periods
+            data["periods"] = data["periods"][offset:end]
+            data["pagination"] = {
+                "total": total_periods,
+                "offset": offset,
+                "limit": limit,
+                "returned": len(data["periods"]),
+            }
+
         return data
 
     raise HTTPException(

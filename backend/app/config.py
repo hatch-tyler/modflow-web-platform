@@ -48,18 +48,41 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    # Redis
+    # Redis (broker — Celery task queue, pub/sub)
     redis_host: str = "redis"
     redis_port: int = 6379
     redis_db: int = 0
     redis_password: str = "redis_secret"
 
+    # Redis Cache (slice cache, live results — separate instance with allkeys-lru)
+    redis_cache_host: str = ""
+    redis_cache_port: int = 6379
+    redis_cache_db: int = 0
+    redis_cache_password: str = ""
+
+    # Environment mode
+    environment: str = "development"
+
+    # CORS
+    cors_origins: str = ""
+
     @property
     def redis_url(self) -> str:
-        """Construct Redis URL."""
+        """Construct Redis URL for broker."""
         if self.redis_password:
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @property
+    def redis_cache_url(self) -> str:
+        """Construct Redis URL for cache. Falls back to broker Redis if not configured."""
+        host = self.redis_cache_host or self.redis_host
+        port = self.redis_cache_port if self.redis_cache_host else self.redis_port
+        password = self.redis_cache_password or self.redis_password
+        db = self.redis_cache_db
+        if password:
+            return f"redis://:{password}@{host}:{port}/{db}"
+        return f"redis://{host}:{port}/{db}"
 
     # Celery
     celery_broker_url: str = ""
@@ -133,4 +156,21 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
-    return Settings()
+    settings = Settings()
+
+    # In production, require real secrets — don't allow weak defaults
+    if settings.environment == "production":
+        _weak_defaults = {
+            "secret_key": "change-me-in-production-use-openssl-rand-hex-32",
+            "redis_password": "redis_secret",
+            "postgres_password": "modflow_secret",
+            "minio_secret_key": "minioadmin",
+        }
+        for field, weak_value in _weak_defaults.items():
+            if getattr(settings, field, None) == weak_value:
+                raise ValueError(
+                    f"FATAL: {field.upper()} still has its default value. "
+                    f"Set a strong secret via environment variable in production."
+                )
+
+    return settings

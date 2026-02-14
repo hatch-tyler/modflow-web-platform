@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, Play, Pause, SkipForward, SkipBack, Map as MapIcon, Grid3X3 } from 'lucide-react'
@@ -23,7 +23,7 @@ interface HeadContourChartProps {
   awaitingProgress?: PostProcessProgress
 }
 
-export default function HeadContourChart({ projectId, runId, summary, expanded = false, compareRunId, compareSummary, awaitingProgress }: HeadContourChartProps) {
+function HeadContourChart({ projectId, runId, summary, expanded = false, compareRunId, compareSummary, awaitingProgress }: HeadContourChartProps) {
   // Show awaiting data state if progress is provided and heads not yet complete
   if (awaitingProgress && !awaitingProgress.postprocess_completed?.includes('heads')) {
     return <AwaitingData dataType="heads" progress={awaitingProgress} height={expanded ? window.innerHeight - 200 : 400} />
@@ -719,3 +719,5 @@ export default function HeadContourChart({ projectId, runId, summary, expanded =
     </div>
   )
 }
+
+export default memo(HeadContourChart)

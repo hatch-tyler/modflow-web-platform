@@ -1,6 +1,7 @@
 """Calibration and parameter estimation task definitions."""
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -9,6 +10,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -613,9 +616,13 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
 
     def publish(message: str):
         """Publish message to Redis channel and append to history list."""
-        redis_client.publish(channel, message)
-        redis_client.rpush(history_key, message)
-        redis_client.expire(history_key, 86400)
+        try:
+            redis_client.publish(channel, message)
+            redis_client.rpush(history_key, message)
+            redis_client.ltrim(history_key, -20000, -1)
+            redis_client.expire(history_key, 86400)
+        except Exception as e:
+            logger.warning(f"Redis publish error (calibration continues): {e}")
 
     with SessionLocal() as db:
         # Get project and run
@@ -758,7 +765,9 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
                     parameters.append(
                         {
                             "property": p["property"],
-                            "layer": p["layer"],
+                            "layer": p.get("layer"),
+                            "package_type": p.get("package_type", "array"),
+                            "approach": p.get("approach", "multiplier"),
                             "initial_value": p.get("initial_value", 1.0),
                             "lower_bound": p.get("lower_bound", 0.01),
                             "upper_bound": p.get("upper_bound", 100.0),
@@ -989,12 +998,17 @@ def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
     """
     redis_client = get_sync_client()
     channel = f"pest:{run_id}:output"
+    history_key = f"pest:{run_id}:history"
     storage = get_storage_service()
 
     def publish(message: str):
-        redis_client.publish(channel, message)
-        redis_client.rpush(history_key, message)
-        redis_client.expire(history_key, 86400)
+        try:
+            redis_client.publish(channel, message)
+            redis_client.rpush(history_key, message)
+            redis_client.ltrim(history_key, -20000, -1)
+            redis_client.expire(history_key, 86400)
+        except Exception as e:
+            logger.warning(f"Redis publish error (calibration continues): {e}")
 
     with SessionLocal() as db:
         project = db.execute(
@@ -1133,7 +1147,9 @@ def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
                     parameters.append(
                         {
                             "property": p["property"],
-                            "layer": p["layer"],
+                            "layer": p.get("layer"),
+                            "package_type": p.get("package_type", "array"),
+                            "approach": p.get("approach", "multiplier"),
                             "initial_value": p.get("initial_value", 1.0),
                             "lower_bound": p.get("lower_bound", 0.01),
                             "upper_bound": p.get("upper_bound", 100.0),
