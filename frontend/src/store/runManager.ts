@@ -74,9 +74,15 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
   startRun: ({ runId, projectId, projectName, runType, startedAt, isReconnect }) => {
     const state = get()
 
-    // Don't start if already tracking this run
-    if (state.activeRuns[runId]) {
-      return
+    // If already tracking this run, check if we need to re-establish the SSE connection
+    const existingRun = state.activeRuns[runId]
+    if (existingRun) {
+      // Only reconnect if the run is still "running" but SSE is dead (no eventSource, no pending timer)
+      if (existingRun.status === 'running' && !existingRun.eventSource && !existingRun.reconnectTimer) {
+        // Fall through to reconnect below
+      } else {
+        return
+      }
     }
 
     // Helper to create SSE connection with event handlers
@@ -170,6 +176,24 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
     }
 
     const eventSource = connectSSE()
+
+    // Re-establish SSE on an existing stale run
+    if (existingRun) {
+      get().appendOutput(runId, `[${new Date().toLocaleTimeString()}] Reconnected to simulation`)
+      set((s) => ({
+        activeRuns: {
+          ...s.activeRuns,
+          [runId]: {
+            ...s.activeRuns[runId],
+            eventSource,
+            reconnectAttempts: 0,
+            reconnectTimer: null,
+          },
+        },
+        selectedRunId: runId,
+      }))
+      return
+    }
 
     // Create new active run
     const actualStart = startedAt || new Date()

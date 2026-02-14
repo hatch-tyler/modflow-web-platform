@@ -91,9 +91,18 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                     # volumetric budget with PERCENT DISCREPANCY).
                     if ext == ".lst" and filename.lower() == "mfsim.lst" and ext in local_files:
                         pass  # don't overwrite model listing
+                    elif ext in local_files:
+                        # Multiple files with same extension (e.g. flow.hds,
+                        # flow.sfr.hds, flow.maw.hds).  Prefer the "main"
+                        # model output — the one with fewest dots in its name.
+                        existing_dots = local_files[ext].name.count(".")
+                        new_dots = filename.count(".")
+                        if new_dots < existing_dots:
+                            local_files[ext] = local_path
+                        # else keep existing (it's the simpler/main file)
                     else:
                         local_files[ext] = local_path
-                    # Also store by full filename for listing files
+                    # Also store by full filename for specific lookups
                     local_files[filename.lower()] = local_path
 
             except Exception as e:
@@ -162,6 +171,9 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                     "No cell budget file (CBC) found in simulation output. "
                     "Enable 'Save Water Budget' when starting a simulation to generate budget data."
                 )
+
+            # Set output_prefix early so it's available for all upload steps
+            output_prefix = run.results_path
 
             # Parse listing file
             update_progress(72, 100, "Parsing listing file for convergence...", "listing")
@@ -288,7 +300,6 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
             }
 
             # Upload results_summary.json
-            output_prefix = run.results_path
             summary_json = json.dumps(results_summary, default=_json_serialize)
             storage.upload_bytes(
                 settings.minio_bucket_models,

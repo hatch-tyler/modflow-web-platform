@@ -91,28 +91,30 @@ export default function ConsolePage() {
     refetchInterval: isRunning ? 3000 : false,
   })
 
-  // Auto-register running runs from API that aren't tracked in run manager
-  // This handles runs that were started before the page loaded or before code deployment
+  // Auto-register running runs from API that aren't tracked in run manager,
+  // and re-establish SSE for tracked runs whose connection died (exhausted reconnect attempts)
   useEffect(() => {
     if (!projectId || !project || !runs) return
 
-    // Find runs from API that are running/queued but not in run manager
-    const untrackedRunningRuns = runs.filter(
-      (run: Run) =>
-        (run.status === 'running' || run.status === 'queued') &&
-        !activeRuns[run.id]
+    const runningApiRuns = runs.filter(
+      (run: Run) => run.status === 'running' || run.status === 'queued'
     )
 
-    // Register each untracked running run to establish SSE connection
-    for (const run of untrackedRunningRuns) {
-      startRun({
-        runId: run.id,
-        projectId: projectId,
-        projectName: project.name || 'Unknown Project',
-        runType: 'simulation',
-        startedAt: run.started_at ? new Date(run.started_at) : undefined,
-        isReconnect: true,
-      })
+    for (const run of runningApiRuns) {
+      const tracked = activeRuns[run.id]
+      const needsConnection = !tracked ||
+        (tracked.status === 'running' && !tracked.eventSource && !tracked.reconnectTimer)
+
+      if (needsConnection) {
+        startRun({
+          runId: run.id,
+          projectId: projectId,
+          projectName: project.name || 'Unknown Project',
+          runType: 'simulation',
+          startedAt: run.started_at ? new Date(run.started_at) : undefined,
+          isReconnect: true,
+        })
+      }
     }
   }, [projectId, project, runs, activeRuns, startRun])
 

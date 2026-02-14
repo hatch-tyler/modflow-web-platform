@@ -568,9 +568,16 @@ def _compute_full_budget_from_cbc(run: Run, project: Project, storage) -> Option
     cbc_obj = None
     for obj_name in output_objects:
         lower_name = obj_name.lower()
-        if lower_name.endswith(".cbc") or lower_name.endswith(".bud") or lower_name.endswith(".cbb"):
-            cbc_obj = obj_name
-            break
+        fname = lower_name.rsplit("/", 1)[-1]
+        if fname.endswith(".cbc") or fname.endswith(".bud") or fname.endswith(".cbb"):
+            # Prefer main model file (fewer dots = main, e.g. flow.cbc vs flow.sfr.cbc)
+            if cbc_obj is None:
+                cbc_obj = obj_name
+            else:
+                existing_dots = cbc_obj.rsplit("/", 1)[-1].count(".")
+                new_dots = fname.count(".")
+                if new_dots < existing_dots:
+                    cbc_obj = obj_name
 
     if not cbc_obj:
         return None
@@ -579,8 +586,7 @@ def _compute_full_budget_from_cbc(run: Run, project: Project, storage) -> Option
 
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.cbc"
-        file_data = storage.download_file(settings.minio_bucket_models, cbc_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, cbc_obj, local_path)
 
         cbc = None
         try:
@@ -713,10 +719,10 @@ async def get_budget(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
-    Get the full water budget breakdown.
+    Get the water budget breakdown.
 
     Returns record names and per-period budget data with IN/OUT totals.
-    If only quick-mode budget is available, computes full budget on-demand from CBC.
+    Returns quick-mode (last timestep only) data when available.
     """
     run, project = await _get_run_or_404(project_id, run_id, db)
     storage = get_storage_service()
@@ -724,17 +730,7 @@ async def get_budget(
     obj_name = f"{run.results_path}/processed/budget.json"
     if storage.object_exists(settings.minio_bucket_models, obj_name):
         data = json.loads(storage.download_file(settings.minio_bucket_models, obj_name))
-        # If quick_mode, compute full budget on-demand
-        if data.get("quick_mode"):
-            full_budget = _compute_full_budget_from_cbc(run, project, storage)
-            if full_budget:
-                return full_budget
         return data
-
-    # No budget.json at all - try computing from CBC directly
-    full_budget = _compute_full_budget_from_cbc(run, project, storage)
-    if full_budget:
-        return full_budget
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -814,9 +810,14 @@ async def get_timeseries(
     hds_obj = None
     for obj_name in output_objects:
         lower_name = obj_name.lower()
-        if lower_name.endswith(".hds") or lower_name.endswith(".hed"):
-            hds_obj = obj_name
-            break
+        fname = lower_name.rsplit("/", 1)[-1]
+        if fname.endswith(".hds") or fname.endswith(".hed"):
+            if hds_obj is None:
+                hds_obj = obj_name
+            else:
+                existing_dots = hds_obj.rsplit("/", 1)[-1].count(".")
+                if fname.count(".") < existing_dots:
+                    hds_obj = obj_name
 
     if not hds_obj:
         raise HTTPException(
@@ -826,8 +827,7 @@ async def get_timeseries(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.hds"
-        file_data = storage.download_file(settings.minio_bucket_models, hds_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
         hds = None
         try:
@@ -1190,7 +1190,7 @@ async def export_budget_csv(
     run_id: UUID,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Export full water budget as flat CSV. Computes full budget on-demand if needed."""
+    """Export water budget as flat CSV."""
     run, project = await _get_run_or_404(project_id, run_id, db)
     storage = get_storage_service()
 
@@ -1198,15 +1198,6 @@ async def export_budget_csv(
     obj_name = f"{run.results_path}/processed/budget.json"
     if storage.object_exists(settings.minio_bucket_models, obj_name):
         budget = json.loads(storage.download_file(settings.minio_bucket_models, obj_name))
-        # If quick_mode, compute full budget for complete CSV export
-        if budget.get("quick_mode"):
-            full_budget = _compute_full_budget_from_cbc(run, project, storage)
-            if full_budget:
-                budget = full_budget
-
-    if not budget:
-        # No budget.json - try computing from CBC directly
-        budget = _compute_full_budget_from_cbc(run, project, storage)
 
     if not budget:
         raise HTTPException(
@@ -1284,9 +1275,14 @@ async def export_timeseries_csv(
     hds_obj = None
     for obj_name in output_objects:
         lower_name = obj_name.lower()
-        if lower_name.endswith(".hds") or lower_name.endswith(".hed"):
-            hds_obj = obj_name
-            break
+        fname = lower_name.rsplit("/", 1)[-1]
+        if fname.endswith(".hds") or fname.endswith(".hed"):
+            if hds_obj is None:
+                hds_obj = obj_name
+            else:
+                existing_dots = hds_obj.rsplit("/", 1)[-1].count(".")
+                if fname.count(".") < existing_dots:
+                    hds_obj = obj_name
 
     if not hds_obj:
         raise HTTPException(
@@ -1296,8 +1292,7 @@ async def export_timeseries_csv(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.hds"
-        file_data = storage.download_file(settings.minio_bucket_models, hds_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
         hds = None
         try:

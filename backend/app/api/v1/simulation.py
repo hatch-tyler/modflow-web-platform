@@ -325,7 +325,11 @@ async def stream_output(
                                 break
 
         finally:
-            await pubsub.unsubscribe(channel)
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:
+                pass
+            await pubsub.aclose()
 
     return StreamingResponse(
         generate(),

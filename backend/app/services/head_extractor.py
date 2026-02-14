@@ -31,12 +31,16 @@ def _find_hds_file(storage, results_path: str) -> Optional[str]:
         recursive=True,
     )
 
-    # Look for both .hds and .hed extensions
+    # Look for both .hds and .hed extensions, preferring main model file
+    best = None
     for obj_name in output_objects:
-        lower_name = obj_name.lower()
-        if lower_name.endswith(".hds") or lower_name.endswith(".hed"):
-            return obj_name
-    return None
+        fname = obj_name.rsplit("/", 1)[-1].lower()
+        if fname.endswith(".hds") or fname.endswith(".hed"):
+            if best is None:
+                best = obj_name
+            elif fname.count(".") < best.rsplit("/", 1)[-1].count("."):
+                best = obj_name
+    return best
 
 
 def get_timestep_index(
@@ -55,8 +59,9 @@ def get_timestep_index(
     - grid_shape: [nlay, nrow, ncol] or [nlay, ncpl] for unstructured
 
     This is cached in Redis for fast subsequent access.
+    Tries to populate from results_summary.json before downloading the HDS file.
     """
-    import flopy.utils
+    import json
 
     # Check cache first
     cached = get_cached_timestep_index(project_id, run_id)
@@ -64,17 +69,57 @@ def get_timestep_index(
         return cached
 
     storage = get_storage_service()
+    is_unstructured = model_type == "mfusg"
+
+    # Try to build index from results_summary.json (avoids downloading multi-GB HDS file)
+    summary_obj = f"{results_path}/results_summary.json"
+    try:
+        if storage.object_exists(settings.minio_bucket_models, summary_obj):
+            summary_data = json.loads(
+                storage.download_file(settings.minio_bucket_models, summary_obj)
+            )
+            hs = summary_data.get("heads_summary", {})
+            meta = summary_data.get("metadata", {})
+            kstpkper_list = hs.get("kstpkper_list", [])
+            times = hs.get("times", [])
+
+            if kstpkper_list:
+                nlay = meta.get("nlay", 1)
+                nrow = meta.get("nrow", 1)
+                ncol = meta.get("ncol", 1)
+
+                if is_unstructured or meta.get("grid_type") in ("vertex", "unstructured"):
+                    grid_shape = [nlay, ncol]
+                else:
+                    grid_shape = [nlay, nrow, ncol]
+
+                hds_obj = _find_hds_file(storage, results_path)
+
+                index_data = {
+                    "kstpkper_list": kstpkper_list,
+                    "times": times,
+                    "nlay": nlay,
+                    "grid_shape": grid_shape,
+                    "is_unstructured": is_unstructured,
+                    "hds_path": hds_obj,
+                }
+
+                cache_timestep_index(project_id, run_id, index_data)
+                return index_data
+    except Exception:
+        pass  # Fall through to HDS file download
+
+    # Fallback: download HDS file and read index directly
+    import flopy.utils
+
     hds_obj = _find_hds_file(storage, results_path)
 
     if not hds_obj:
         return {"error": "HDS file not found", "kstpkper_list": [], "times": []}
 
-    is_unstructured = model_type == "mfusg"
-
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.hds"
-        file_data = storage.download_file(settings.minio_bucket_models, hds_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
         try:
             if is_unstructured:
@@ -166,8 +211,7 @@ def extract_head_slice_on_demand(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.hds"
-        file_data = storage.download_file(settings.minio_bucket_models, hds_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
         try:
             if is_unstructured:
@@ -249,10 +293,36 @@ def get_head_statistics(
 
     Returns min/max heads across all timesteps by scanning the file.
     This is useful for color scaling in visualizations.
+    Checks results_summary.json first to avoid downloading large HDS files.
     """
-    import flopy.utils
+    import json
 
     storage = get_storage_service()
+
+    # Try results_summary.json first (avoids downloading multi-GB HDS file)
+    summary_obj = f"{results_path}/results_summary.json"
+    try:
+        if storage.object_exists(settings.minio_bucket_models, summary_obj):
+            summary_data = json.loads(
+                storage.download_file(settings.minio_bucket_models, summary_obj)
+            )
+            hs = summary_data.get("heads_summary", {})
+            min_head = hs.get("min_head")
+            max_head = hs.get("max_head")
+            nstp = hs.get("nstp_total", 0)
+            if min_head is not None and max_head is not None:
+                return {
+                    "min_head": min_head,
+                    "max_head": max_head,
+                    "timesteps_sampled": 3,
+                    "total_timesteps": nstp,
+                }
+    except Exception:
+        pass
+
+    # Fallback: download HDS file and scan
+    import flopy.utils
+
     hds_obj = _find_hds_file(storage, results_path)
 
     if not hds_obj:
@@ -262,8 +332,7 @@ def get_head_statistics(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         local_path = Path(temp_dir) / "output.hds"
-        file_data = storage.download_file(settings.minio_bucket_models, hds_obj)
-        local_path.write_bytes(file_data)
+        storage.download_to_file(settings.minio_bucket_models, hds_obj, local_path)
 
         try:
             if is_unstructured:

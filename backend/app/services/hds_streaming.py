@@ -48,17 +48,25 @@ HDS_HEADER_DP_FORMAT = "<2i2d16s3i"
 
 
 def _find_hds_file(storage, results_path: str) -> Optional[str]:
-    """Find the binary head file in the results path."""
+    """Find the main binary head file in the results path.
+
+    Prefers the file with fewest dots in its name (e.g. flow.hds over
+    flow.sfr.hds) to select the main model output.
+    """
     output_objects = storage.list_objects(
         settings.minio_bucket_models,
         prefix=results_path,
         recursive=True,
     )
+    best = None
     for obj_name in output_objects:
-        lower_name = obj_name.lower()
-        if lower_name.endswith(".hds") or lower_name.endswith(".hed"):
-            return obj_name
-    return None
+        fname = obj_name.rsplit("/", 1)[-1].lower()
+        if fname.endswith(".hds") or fname.endswith(".hed"):
+            if best is None:
+                best = obj_name
+            elif fname.count(".") < best.rsplit("/", 1)[-1].count("."):
+                best = obj_name
+    return best
 
 
 def _detect_precision(storage, bucket: str, hds_path: str) -> tuple[str, int, int]:

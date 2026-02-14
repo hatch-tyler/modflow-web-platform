@@ -622,7 +622,11 @@ async def stream_pest_output(
                                 yield f"event: status\ndata: {current_run.status.value}\n\n"
                                 break
         finally:
-            await pubsub.unsubscribe(channel)
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:
+                pass
+            await pubsub.aclose()
 
     return StreamingResponse(
         generate(),
