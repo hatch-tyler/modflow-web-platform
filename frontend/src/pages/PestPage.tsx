@@ -29,6 +29,7 @@ import type {
   PestEnsembleData,
   ObservationSet,
   ParameterApproach,
+  ParameterScanStatus,
 } from '../types'
 
 type TabId = 'parameters' | 'observations' | 'settings' | 'results'
@@ -86,35 +87,65 @@ export default function PestPage() {
     enabled: !!projectId,
   })
 
-  const [rescanning, setRescanning] = useState(false)
+  // Parameter scan state
+  const [scanTaskId, setScanTaskId] = useState<string | null>(null)
 
-  const { data: paramsData, isLoading: paramsLoading, isFetching: paramsFetching } = useQuery({
+  // Fast read-only query: checks cache + scan status
+  const { data: paramsData, isLoading: paramsLoading } = useQuery({
     queryKey: ['pest-parameters', projectId],
     queryFn: () => pestApi.getParameters(projectId!),
     enabled: !!projectId && !!project?.is_valid,
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: 1,
-    retryDelay: 5000,
   })
 
-  // Reset rescanning flag when fetch completes
+  // Auto-trigger scan when GET returns "not_started"
   useEffect(() => {
-    if (rescanning && !paramsFetching) {
-      setRescanning(false)
+    if (!projectId || !paramsData) return
+    if (paramsData.status === 'not_started' && !scanTaskId) {
+      pestApi.startParameterScan(projectId).then((res) => {
+        setScanTaskId(res.task_id)
+      }).catch(() => {
+        // Will retry on next query
+      })
+    } else if (paramsData.status === 'scanning' && paramsData.task_id && !scanTaskId) {
+      // Pick up an in-flight scan we didn't start
+      setScanTaskId(paramsData.task_id)
     }
-  }, [rescanning, paramsFetching])
+  }, [projectId, paramsData, scanTaskId])
+
+  // Poll scan progress when a scan is active
+  const { data: scanProgress } = useQuery({
+    queryKey: ['pest-param-scan', projectId, scanTaskId],
+    queryFn: () => pestApi.getParameterScanStatus(projectId!, scanTaskId!),
+    enabled: !!projectId && !!scanTaskId,
+    refetchInterval: 2000,
+  })
+
+  // When scan completes or fails, invalidate params query and clear scanTaskId
+  useEffect(() => {
+    if (!scanProgress) return
+    if (scanProgress.status === 'completed' || scanProgress.status === 'failed') {
+      setScanTaskId(null)
+      queryClient.invalidateQueries({ queryKey: ['pest-parameters', projectId] })
+    }
+  }, [scanProgress?.status, projectId, queryClient])
+
+  const isScanning = !!scanTaskId
+  const scanStatus = scanProgress?.status || paramsData?.status
+  const scanMessage = scanProgress?.message || paramsData?.message || ''
+  const scanPercent = scanProgress?.progress ?? paramsData?.progress ?? 0
 
   const handleRescanParameters = useCallback(async () => {
-    if (!projectId) return
-    setRescanning(true)
+    if (!projectId || isScanning) return
     try {
-      await pestApi.clearParameterCache(projectId)
+      const res = await pestApi.startParameterScan(projectId, true)
+      setScanTaskId(res.task_id)
     } catch {
-      // Cache may already be gone
+      // Ignore errors, user can retry
     }
-    queryClient.invalidateQueries({ queryKey: ['pest-parameters', projectId] })
-  }, [projectId, queryClient])
+  }, [projectId, isScanning])
 
   const { data: obsData } = useQuery({
     queryKey: ['observations', projectId],
@@ -470,12 +501,15 @@ export default function PestPage() {
         {activeTab === 'parameters' && (
           <ParametersTab
             parameters={paramsData?.parameters || []}
-            loading={paramsLoading || paramsFetching}
+            loading={paramsLoading}
+            scanning={isScanning}
+            scanStatus={scanStatus}
+            scanMessage={scanMessage}
+            scanPercent={scanPercent}
             selectedParams={selectedParams}
             onToggle={toggleParam}
             onUpdate={updateParam}
             onRescan={handleRescanParameters}
-            rescanning={rescanning}
           />
         )}
         {activeTab === 'observations' && (
@@ -519,33 +553,85 @@ export default function PestPage() {
 interface ParametersTabProps {
   parameters: PestParameter[]
   loading: boolean
+  scanning: boolean
+  scanStatus?: ParameterScanStatus | string
+  scanMessage?: string
+  scanPercent?: number
   selectedParams: Record<string, PestParameterConfig>
   onToggle: (param: PestParameter) => void
   onUpdate: (key: string, field: string, value: number | string) => void
   onRescan?: () => void
-  rescanning?: boolean
 }
 
 function ParametersTab({
   parameters,
   loading,
+  scanning,
+  scanStatus,
+  scanMessage,
+  scanPercent = 0,
   selectedParams,
   onToggle,
   onUpdate,
   onRescan,
-  rescanning,
 }: ParametersTabProps) {
   if (loading) {
     return (
       <div className="h-64 flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
-        <span className="text-slate-700 font-medium">Scanning model for adjustable parameters...</span>
+        <span className="text-slate-700 font-medium">Checking for cached parameters...</span>
+      </div>
+    )
+  }
+
+  // Show scanning progress
+  if (scanning || scanStatus === 'scanning' || scanStatus === 'queued' || scanStatus === 'downloading' || scanStatus === 'loading' || scanStatus === 'caching') {
+    return (
+      <div className="h-64 flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
+        <span className="text-slate-700 font-medium">
+          {scanMessage || 'Scanning model for adjustable parameters...'}
+        </span>
+
+        {/* Progress bar */}
+        <div className="mt-4 w-80">
+          <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <span>{scanStatus === 'queued' ? 'Queued' : 'Scanning'}</span>
+            <span>{scanPercent}%</span>
+          </div>
+          <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-500"
+              style={{ width: `${scanPercent}%` }}
+            />
+          </div>
+        </div>
+
         <div className="mt-3 text-sm text-slate-500 max-w-md text-center">
-          <p>This scans all model packages (NPF, STO, HFB, SFR, GHB, RIV, DRN, RCH, EVT, etc.) to extract adjustable properties.</p>
+          <p>Scanning packages (NPF, STO, HFB, SFR, GHB, RIV, DRN, RCH, EVT, etc.) on the worker.</p>
           <p className="mt-2 text-xs text-slate-400">
-            Large models may take several minutes. Please wait...
+            Large models may take several minutes. The API remains responsive.
           </p>
         </div>
+      </div>
+    )
+  }
+
+  // Scan failed
+  if (scanStatus === 'failed') {
+    return (
+      <div className="h-48 flex flex-col items-center justify-center gap-4">
+        <AlertCircle className="h-8 w-8 text-red-400" />
+        <span className="text-red-600">Parameter scan failed</span>
+        {onRescan && (
+          <button
+            onClick={onRescan}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry Scan
+          </button>
+        )}
       </div>
     )
   }
@@ -557,10 +643,9 @@ function ParametersTab({
         {onRescan && (
           <button
             onClick={onRescan}
-            disabled={rescanning}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100"
           >
-            <RefreshCw className={clsx('h-4 w-4', rescanning && 'animate-spin')} />
+            <RefreshCw className="h-4 w-4" />
             Rescan Model
           </button>
         )}
@@ -586,10 +671,10 @@ function ParametersTab({
         <div className="flex justify-end">
           <button
             onClick={onRescan}
-            disabled={rescanning}
+            disabled={scanning}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 disabled:opacity-50"
           >
-            <RefreshCw className={clsx('h-3.5 w-3.5', rescanning && 'animate-spin')} />
+            <RefreshCw className={clsx('h-3.5 w-3.5', scanning && 'animate-spin')} />
             Rescan Model
           </button>
         </div>

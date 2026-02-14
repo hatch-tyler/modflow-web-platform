@@ -5,10 +5,11 @@ import type {
   ObservationData, ObservationSet, ObservationSetUpdate, MarkFileAsObservation,
   CategorizedFiles, TimestepIndex, HeadStatistics,
   LiveTimestepIndex, LiveHeadSlice, LiveResultsSummary,
-  PestParameter, PestConfig, PestResults, UploadStatus, AgentStatus,
+  PestConfig, PestResults, UploadStatus, AgentStatus,
   StructuredGridInfo,
   ZoneDefinitionSummary, ZoneDefinitionDetail, ZoneBudgetComputeResponse, ZoneBudgetProgress,
   ConvergenceDetail, StressSummary, Refinement, BackupInfo,
+  ParameterScanResponse, ParameterScanProgress,
 } from '../types'
 
 const API_BASE = '/api/v1'
@@ -243,12 +244,22 @@ export const observationsApi = {
 
 // PEST++
 export const pestApi = {
-  // Large models can take 5+ minutes to scan all packages for adjustable parameters
-  getParameters: (projectId: string, forceRefresh = false) =>
-    api.get<{ parameters: PestParameter[] }>(`/projects/${projectId}/pest/parameters`, {
-      timeout: 10 * 60 * 1000, // 10 minutes for large models
-      params: forceRefresh ? { force_refresh: true } : undefined,
-    }).then(r => r.data),
+  // Fast read-only: returns cached params or scan status (never loads model)
+  getParameters: (projectId: string) =>
+    api.get<ParameterScanResponse>(`/projects/${projectId}/pest/parameters`).then(r => r.data),
+
+  // Trigger parameter discovery on Celery worker
+  startParameterScan: (projectId: string, forceRefresh = false) =>
+    api.post<{ status: string; task_id: string }>(
+      `/projects/${projectId}/pest/parameters/scan`,
+      { force_refresh: forceRefresh },
+    ).then(r => r.data),
+
+  // Poll scan progress
+  getParameterScanStatus: (projectId: string, taskId: string) =>
+    api.get<ParameterScanProgress>(
+      `/projects/${projectId}/pest/parameters/scan/${taskId}`,
+    ).then(r => r.data),
 
   clearParameterCache: (projectId: string) =>
     api.delete(`/projects/${projectId}/pest/parameters/cache`).then(r => r.data),

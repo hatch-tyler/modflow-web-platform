@@ -4,13 +4,12 @@ import csv
 import io
 import json
 import logging
-import tempfile
+import time
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -105,18 +104,16 @@ async def _get_project_or_404(
 @router.get("/parameters")
 async def get_available_parameters(
     project_id: UUID,
-    force_refresh: bool = Query(False, description="Force re-scan, ignoring cache"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
-    Discover adjustable parameters from the uploaded model.
+    Get cached parameters or check scan status.
 
-    Scans model packages (LPF/UPW/NPF/STO/GHB/RIV/DRN/RCH/EVT) and
-    returns available parameter arrays with per-layer statistics and
-    suggested bounds.
-
-    Results are cached in MinIO to avoid re-scanning on every page load.
-    Use force_refresh=true to bypass the cache.
+    This is a fast, read-only endpoint. It never loads the model.
+    Returns one of:
+    - status="completed" with parameters (from MinIO cache)
+    - status="scanning" with task_id/progress (scan in-flight)
+    - status="not_started" (no cache, no scan running)
     """
     project = await _get_project_or_404(project_id, db)
 
@@ -128,84 +125,198 @@ async def get_available_parameters(
 
     storage = get_storage_service()
 
-    # Check for cached parameters (skip if force_refresh)
+    # 1. Check MinIO cache
     cache_path = f"projects/{project_id}/pest/parameters_cache.json"
-    if not force_refresh and storage.object_exists(settings.minio_bucket_models, cache_path):
+    if storage.object_exists(settings.minio_bucket_models, cache_path):
         try:
             cached_data = storage.download_file(settings.minio_bucket_models, cache_path)
             cached = json.loads(cached_data)
-            # Verify cache is still valid (matches storage path AND cache version)
             if (
                 cached.get("storage_path") == project.storage_path
                 and cached.get("cache_version", 0) >= PARAM_CACHE_VERSION
-                and cached.get("parameters")  # Don't use empty cached results
+                and cached.get("parameters")
             ):
-                return {"parameters": cached["parameters"]}
+                return {"parameters": cached["parameters"], "status": "completed"}
         except Exception:
-            pass  # Cache invalid or corrupted, re-scan
+            pass
 
-    logger.info(
-        "Scanning parameters for project %s (force_refresh=%s)",
-        project_id,
-        force_refresh,
-    )
+    # 2. Check for in-flight scan
+    from app.services.redis_manager import get_sync_client
+    rc = get_sync_client()
+    active_key = f"pest:params:active:{project_id}"
+    active_task_id = rc.get(active_key)
 
-    from app.services.pest_setup import discover_parameters
+    if active_task_id:
+        if isinstance(active_task_id, bytes):
+            active_task_id = active_task_id.decode("utf-8")
+        progress_key = f"pest:params:{active_task_id}"
+        progress = rc.hgetall(progress_key)
+        if progress:
+            decoded = {
+                (k.decode("utf-8") if isinstance(k, bytes) else k):
+                (v.decode("utf-8") if isinstance(v, bytes) else v)
+                for k, v in progress.items()
+            }
+            scan_status = decoded.get("status", "unknown")
+            # If the scan completed, the cache should exist — re-check
+            if scan_status == "completed":
+                try:
+                    cached_data = storage.download_file(settings.minio_bucket_models, cache_path)
+                    cached = json.loads(cached_data)
+                    if cached.get("parameters"):
+                        return {"parameters": cached["parameters"], "status": "completed"}
+                except Exception:
+                    pass
+            elif scan_status != "failed":
+                return {
+                    "parameters": [],
+                    "status": "scanning",
+                    "task_id": active_task_id,
+                    "progress": int(decoded.get("progress", 0)),
+                    "message": decoded.get("message", ""),
+                }
 
-    try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model_dir = Path(temp_dir)
+    # 3. No cache, no active scan
+    return {"parameters": [], "status": "not_started"}
 
-            # Download model files
-            files = storage.list_objects(
-                settings.minio_bucket_models,
-                prefix=project.storage_path,
-                recursive=True,
-            )
-            for obj_name in files:
-                rel_path = obj_name[len(project.storage_path) :].lstrip("/")
-                if not rel_path:
-                    continue
-                local_path = model_dir / rel_path
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                file_data = storage.download_file(
-                    settings.minio_bucket_models, obj_name
-                )
-                local_path.write_bytes(file_data)
 
-            params = discover_parameters(model_dir)
-    except Exception as e:
-        logger.error("Parameter discovery failed for project %s: %s", project_id, e)
+class ParameterScanRequest(BaseModel):
+    """Request to start a parameter scan."""
+    force_refresh: bool = False
+
+
+@router.post("/parameters/scan")
+async def start_parameter_scan(
+    project_id: UUID,
+    request: ParameterScanRequest = ParameterScanRequest(),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Trigger a parameter discovery scan on the Celery worker.
+
+    Returns immediately with a task_id. Poll GET /parameters or
+    GET /parameters/scan/{task_id} for progress.
+    """
+    project = await _get_project_or_404(project_id, db)
+
+    if not project.is_valid or not project.storage_path:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Parameter discovery failed: {e}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project does not have a valid model",
         )
 
-    if not params:
-        logger.warning(
-            "No parameters discovered for project %s — not caching empty result",
-            project_id,
-        )
-        return {"parameters": []}
+    from app.services.redis_manager import get_sync_client
+    rc = get_sync_client()
+    active_key = f"pest:params:active:{project_id}"
 
-    # Cache the discovered parameters
-    try:
-        cache_data = {
-            "storage_path": project.storage_path,
-            "cache_version": PARAM_CACHE_VERSION,
-            "parameters": params,
-            "cached_at": datetime.utcnow().isoformat(),
-        }
-        storage.upload_bytes(
-            settings.minio_bucket_models,
-            cache_path,
-            json.dumps(cache_data).encode("utf-8"),
-            content_type="application/json",
-        )
-    except Exception:
-        pass  # Non-critical if caching fails
+    # Check for existing in-flight scan
+    existing_task_id = rc.get(active_key)
+    if existing_task_id:
+        if isinstance(existing_task_id, bytes):
+            existing_task_id = existing_task_id.decode("utf-8")
+        # Check it's still alive (not stale)
+        progress_key = f"pest:params:{existing_task_id}"
+        progress = rc.hgetall(progress_key)
+        if progress:
+            decoded_status = progress.get(b"status", progress.get("status", b"")).decode("utf-8") if isinstance(progress.get(b"status", progress.get("status", b"")), bytes) else progress.get("status", "")
+            if decoded_status not in ("completed", "failed", ""):
+                return {
+                    "status": "already_running",
+                    "task_id": existing_task_id,
+                }
 
-    return {"parameters": params}
+    # If force_refresh, delete MinIO cache
+    if request.force_refresh:
+        storage = get_storage_service()
+        cache_path = f"projects/{project_id}/pest/parameters_cache.json"
+        try:
+            storage.delete_object(settings.minio_bucket_models, cache_path)
+        except Exception:
+            pass
+
+    # Generate task ID and set Redis markers
+    task_id = str(uuid4())
+    progress_key = f"pest:params:{task_id}"
+    rc.hset(progress_key, mapping={
+        "status": "queued",
+        "progress": "0",
+        "message": "Queued for processing...",
+        "error": "",
+        "created_at": str(time.time()),
+    })
+    rc.expire(progress_key, 3600)
+    rc.set(active_key, task_id, ex=600)  # 10-min safety TTL
+
+    # Queue Celery task
+    from app.tasks.param_discovery import discover_parameters_task
+    discover_parameters_task.delay(task_id, str(project_id), project.storage_path)
+
+    logger.info("Parameter scan queued: task=%s project=%s", task_id, project_id)
+
+    return {"status": "queued", "task_id": task_id}
+
+
+@router.get("/parameters/scan/{task_id}")
+async def get_parameter_scan_status(
+    project_id: UUID,
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Poll parameter scan progress.
+
+    When status is "completed", also returns the cached parameters.
+    """
+    await _get_project_or_404(project_id, db)
+
+    from app.services.redis_manager import get_sync_client
+    rc = get_sync_client()
+    progress_key = f"pest:params:{task_id}"
+    progress = rc.hgetall(progress_key)
+
+    if not progress:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan task {task_id} not found (may have expired)",
+        )
+
+    decoded = {
+        (k.decode("utf-8") if isinstance(k, bytes) else k):
+        (v.decode("utf-8") if isinstance(v, bytes) else v)
+        for k, v in progress.items()
+    }
+
+    result = {
+        "task_id": task_id,
+        "status": decoded.get("status", "unknown"),
+        "progress": int(decoded.get("progress", 0)),
+        "message": decoded.get("message", ""),
+        "error": decoded.get("error", "") or None,
+    }
+
+    # Detect stale tasks (queued for > 5 min with no progress)
+    created_at = decoded.get("created_at")
+    if created_at and result["status"] == "queued":
+        try:
+            age = time.time() - float(created_at)
+            if age > 300:
+                result["status"] = "failed"
+                result["error"] = "Task appears stuck (queued for > 5 minutes)"
+        except (ValueError, TypeError):
+            pass
+
+    # When completed, include the cached parameters
+    if result["status"] == "completed":
+        storage = get_storage_service()
+        cache_path = f"projects/{project_id}/pest/parameters_cache.json"
+        try:
+            cached_data = storage.download_file(settings.minio_bucket_models, cache_path)
+            cached = json.loads(cached_data)
+            result["parameters"] = cached.get("parameters", [])
+        except Exception:
+            result["parameters"] = []
+
+    return result
 
 
 @router.delete("/parameters/cache")

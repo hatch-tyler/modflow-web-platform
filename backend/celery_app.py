@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.postprocess",
         "app.tasks.live_results",
         "app.tasks.zonebudget",
+        "app.tasks.param_discovery",
     ],
 )
 

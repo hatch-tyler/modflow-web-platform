@@ -585,3 +585,23 @@ export interface ZoneBudgetProgress {
   message: string
   error?: string | null
 }
+
+// Parameter scan types (async discovery via Celery worker)
+export type ParameterScanStatus = 'not_started' | 'queued' | 'downloading' | 'loading' | 'caching' | 'scanning' | 'completed' | 'failed'
+
+export interface ParameterScanResponse {
+  parameters: PestParameter[]
+  status: ParameterScanStatus
+  task_id?: string
+  progress?: number
+  message?: string
+}
+
+export interface ParameterScanProgress {
+  task_id: string
+  status: ParameterScanStatus
+  progress: number
+  message: string
+  error?: string | null
+  parameters?: PestParameter[]
+}
