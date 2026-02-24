@@ -17,6 +17,7 @@ interface GridViewerProps {
   boundaries?: Record<string, BoundaryPackage>
   verticalExaggeration?: number
   showWireframe?: boolean
+  cellMask?: Uint8Array
 }
 
 export default function GridViewer({
@@ -30,6 +31,7 @@ export default function GridViewer({
   boundaries = {},
   verticalExaggeration = 10,
   showWireframe = true,
+  cellMask,
 }: GridViewerProps) {
   const { nlay, nrow, ncol } = gridData
 
@@ -255,6 +257,9 @@ export default function GridViewer({
             continue
           }
 
+          // Skip cells hidden by cross-section mask
+          if (cellMask && !cellMask[cellIdx]) continue
+
           let x0: number, x1: number, y0: number, y1: number
 
           if (isStructured && xEdges && yEdges) {
@@ -404,7 +409,7 @@ export default function GridViewer({
     }
 
     return { geometry: geo, wireframeGeometry: wireGeo, boundaryGeometry: bGeo }
-  }, [gridData, nlay, nrow, ncol, visibleLayers, cellColors, verticalExaggeration, boundaryCellMap, sceneOrigin, iboundData, showInactive])
+  }, [gridData, nlay, nrow, ncol, visibleLayers, cellColors, verticalExaggeration, boundaryCellMap, sceneOrigin, iboundData, showInactive, cellMask])
 
   // Camera auto-fit from bounding box (uses gridBbox which is independent of visibleLayers)
   const cameraSetup = useMemo(() => {

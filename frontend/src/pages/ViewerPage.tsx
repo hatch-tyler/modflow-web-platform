@@ -1,10 +1,12 @@
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, Layers, Loader2, Eye, EyeOff, Droplets, ArrowDownCircle, Waves } from 'lucide-react'
+import { Box, Layers, Loader2, Eye, EyeOff, Droplets, ArrowDownCircle, Waves, Scissors, X } from 'lucide-react'
 import { projectsApi } from '../services/api'
 import GridViewer from '../components/viewer3d/GridViewer'
+import CrossSectionPanel from '../components/viewer3d/CrossSectionPanel'
 import { parseGridMesh, parseArrayData, type GridMeshData, type ArrayData } from '../utils/binaryParser'
+import { computeCellMask } from '../utils/crossSection'
 import clsx from 'clsx'
 
 // Boundary condition types
@@ -108,6 +110,9 @@ export default function ViewerPage() {
   const [visibleBoundaries, setVisibleBoundaries] = useState<Record<string, boolean>>({})
   const [loadedBoundaries, setLoadedBoundaries] = useState<Record<string, BoundaryPackage>>({})
   const [showInactive, setShowInactive] = useState(false)
+  const [crossSectionLine, setCrossSectionLine] = useState<[number, number][]>([])
+  const [crossSectionSide, setCrossSectionSide] = useState<'left' | 'right' | 'both'>('both')
+  const [isDrawingCrossSection, setIsDrawingCrossSection] = useState(false)
 
   // Fetch project info
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -234,6 +239,13 @@ export default function ViewerPage() {
       acc[type] = pkg
       return acc
     }, {} as Record<string, BoundaryPackage>)
+
+  // Compute cross-section cell mask
+  const cellMask = useMemo(() => {
+    if (!gridData || crossSectionLine.length < 2 || crossSectionSide === 'both') return undefined
+    const ncells = gridData.nlay * gridData.nrow * gridData.ncol
+    return computeCellMask(crossSectionLine, gridData.centers, ncells, crossSectionSide)
+  }, [gridData, crossSectionLine, crossSectionSide])
 
   return (
     <div className="h-[calc(100vh-8rem)] flex gap-4">
@@ -463,6 +475,77 @@ export default function ViewerPage() {
           </p>
         </div>
 
+        {/* Cross Section */}
+        <div className="mb-6">
+          <h4 className="text-sm font-medium text-slate-600 mb-2 flex items-center gap-1.5">
+            <Scissors className="h-4 w-4" />
+            Cross Section
+          </h4>
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => {
+                if (isDrawingCrossSection) {
+                  setIsDrawingCrossSection(false)
+                } else {
+                  setCrossSectionLine([])
+                  setCrossSectionSide('both')
+                  setIsDrawingCrossSection(true)
+                }
+              }}
+              className={clsx(
+                'flex-1 px-3 py-1.5 text-xs rounded-lg border transition-colors',
+                isDrawingCrossSection
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-slate-300 hover:bg-slate-50 text-slate-600'
+              )}
+            >
+              {isDrawingCrossSection ? 'Done' : 'Draw'}
+            </button>
+            <button
+              onClick={() => {
+                setCrossSectionLine([])
+                setCrossSectionSide('both')
+                setIsDrawingCrossSection(false)
+              }}
+              disabled={crossSectionLine.length === 0 && !isDrawingCrossSection}
+              className={clsx(
+                'px-3 py-1.5 text-xs rounded-lg border transition-colors',
+                crossSectionLine.length === 0 && !isDrawingCrossSection
+                  ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                  : 'border-slate-300 hover:bg-slate-50 text-slate-600'
+              )}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="flex gap-1 mb-2">
+            {(['left', 'right', 'both'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setCrossSectionSide(s)}
+                disabled={crossSectionLine.length < 2}
+                className={clsx(
+                  'flex-1 px-2 py-1.5 text-xs border rounded-lg capitalize transition-colors',
+                  crossSectionLine.length < 2
+                    ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                    : crossSectionSide === s
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-slate-300 hover:bg-slate-50 text-slate-600'
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400">
+            {isDrawingCrossSection
+              ? 'Click on the map above to draw'
+              : crossSectionLine.length >= 2
+              ? `${crossSectionLine.length} points`
+              : 'Draw a line to slice the model'}
+          </p>
+        </div>
+
         {/* Legend */}
         {Object.keys(visibleBoundaryData).length > 0 && (
           <div className="mb-6">
@@ -482,55 +565,72 @@ export default function ViewerPage() {
         )}
       </div>
 
-      {/* 3D Viewer Canvas */}
-      <div className="flex-1 bg-slate-900 rounded-lg border border-slate-700 overflow-hidden relative">
-        {gridLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-            <div className="text-center">
-              <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
-              <p>Loading 3D grid...</p>
-            </div>
-          </div>
-        ) : gridError ? (
-          <div className="absolute inset-0 flex items-center justify-center text-red-400">
-            <div className="text-center">
-              <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Failed to load grid</p>
-              <p className="text-sm opacity-75">{(gridError as Error).message}</p>
-            </div>
-          </div>
-        ) : gridData ? (
-          <Suspense fallback={
-            <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-              <Loader2 className="h-12 w-12 animate-spin" />
-            </div>
-          }>
-            <GridViewer
+      {/* Right panel: drawing panel + 3D viewer */}
+      <div className="flex-1 min-h-0 flex flex-col rounded-lg border border-slate-700 overflow-hidden">
+        {/* Drawing panel — shown when drawing or when a cross-section line exists */}
+        {(isDrawingCrossSection || crossSectionLine.length >= 2) && gridData && (
+          <div className="h-[250px] flex-shrink-0 border-b border-slate-700 bg-slate-800">
+            <CrossSectionPanel
               gridData={gridData}
-              arrayData={arrayData}
-              iboundData={iboundData}
-              showInactive={showInactive}
-              visibleLayers={visibleLayers}
-              colormap={colormap}
-              opacity={opacity}
-              boundaries={visibleBoundaryData}
-              verticalExaggeration={verticalExaggeration}
-              showWireframe={showWireframe}
+              polyline={crossSectionLine}
+              isDrawing={isDrawingCrossSection}
+              onUpdatePolyline={setCrossSectionLine}
+              onFinishDrawing={() => setIsDrawingCrossSection(false)}
             />
-          </Suspense>
-        ) : null}
-
-        {/* Loading overlay for property data */}
-        {arrayLoading && gridData && (
-          <div className="absolute top-4 right-4 bg-slate-800/90 text-slate-300 px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Updating colors...</span>
           </div>
         )}
 
-        {/* Controls hint */}
-        <div className="absolute bottom-4 left-4 text-slate-500 text-xs bg-slate-800/80 px-3 py-2 rounded">
-          <span className="font-medium">Controls:</span> Drag to rotate • Scroll to zoom • Right-drag to pan
+        {/* 3D Viewer Canvas — takes remaining height */}
+        <div className="flex-1 min-h-0 bg-slate-900 overflow-hidden relative">
+          {gridLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+              <div className="text-center">
+                <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin" />
+                <p>Loading 3D grid...</p>
+              </div>
+            </div>
+          ) : gridError ? (
+            <div className="absolute inset-0 flex items-center justify-center text-red-400">
+              <div className="text-center">
+                <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Failed to load grid</p>
+                <p className="text-sm opacity-75">{(gridError as Error).message}</p>
+              </div>
+            </div>
+          ) : gridData ? (
+            <Suspense fallback={
+              <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                <Loader2 className="h-12 w-12 animate-spin" />
+              </div>
+            }>
+              <GridViewer
+                gridData={gridData}
+                arrayData={arrayData}
+                iboundData={iboundData}
+                showInactive={showInactive}
+                visibleLayers={visibleLayers}
+                colormap={colormap}
+                opacity={opacity}
+                boundaries={visibleBoundaryData}
+                verticalExaggeration={verticalExaggeration}
+                showWireframe={showWireframe}
+                cellMask={cellMask}
+              />
+            </Suspense>
+          ) : null}
+
+          {/* Loading overlay for property data */}
+          {arrayLoading && gridData && (
+            <div className="absolute top-4 right-4 bg-slate-800/90 text-slate-300 px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Updating colors...</span>
+            </div>
+          )}
+
+          {/* Controls hint */}
+          <div className="absolute bottom-4 left-4 text-slate-500 text-xs bg-slate-800/80 px-3 py-2 rounded">
+            <span className="font-medium">Controls:</span> Drag to rotate • Scroll to zoom • Right-drag to pan
+          </div>
         </div>
       </div>
     </div>
