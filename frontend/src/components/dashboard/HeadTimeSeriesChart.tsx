@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react'
+import { memo, useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, FileSpreadsheet, ChevronDown } from 'lucide-react'
@@ -7,6 +7,7 @@ import type { ResultsSummary, ObservationData, PostProcessProgress } from '../..
 import { timesToDates } from '../../utils/dateUtils'
 import ExportButton from './ExportButton'
 import AwaitingData from './AwaitingData'
+import CellLocationMap from './CellLocationMap'
 import { lengthAbbrev, timeAbbrev, labelWithUnit } from '../../utils/unitLabels'
 
 const OBS_COLORS = ['#ef4444', '#f97316', '#22c55e', '#8b5cf6', '#06b6d4', '#ec4899', '#eab308', '#14b8a6']
@@ -50,6 +51,19 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
   const [selectedSetId, setSelectedSetId] = useState<string>('all')
   const [showSetDropdown, setShowSetDropdown] = useState(false)
 
+  // Local string state for text inputs (fixes can't-delete-the-1 bug)
+  const [layerInput, setLayerInput] = useState(String(layer + 1))
+  const [rowInput, setRowInput] = useState(String(row + 1))
+  const [colInput, setColInput] = useState(String(col + 1))
+  const [nodeInput, setNodeInput] = useState(String(node + 1))
+  const autoSelectedRef = useRef(false)
+
+  // Sync string inputs when numeric state changes (e.g. from well selection)
+  useEffect(() => { setLayerInput(String(layer + 1)) }, [layer])
+  useEffect(() => { setRowInput(String(row + 1)) }, [row])
+  useEffect(() => { setColInput(String(col + 1)) }, [col])
+  useEffect(() => { setNodeInput(String(node + 1)) }, [node])
+
   const queryParams = isUnstructured
     ? { layer, node }
     : { layer, row, col }
@@ -88,7 +102,7 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
   })
 
   const cellLabel = isUnstructured
-    ? `L${layer + 1} N${node + 1}`
+    ? `L${layer + 1} Cell ${node + 1}`
     : `L${layer + 1} R${row + 1} C${col + 1}`
 
   const chartHeight = expanded ? window.innerHeight - 160 : 350
@@ -115,6 +129,20 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
     }
   }
 
+  // Auto-select first observation well with location info on load
+  useEffect(() => {
+    if (autoSelectedRef.current || !activeObsData?.wells) return
+    const names = Object.keys(activeObsData.wells)
+    const firstWithLocation = names.find(name => {
+      const w = activeObsData.wells[name]
+      return w.row !== undefined || w.node !== undefined
+    })
+    if (firstWithLocation) {
+      autoSelectedRef.current = true
+      handleWellSelect(firstWithLocation)
+    }
+  }, [activeObsData]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const wellNames = useMemo(() => {
     if (!activeObsData?.wells) return []
     return Object.keys(activeObsData.wells)
@@ -122,6 +150,17 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
 
   const hasObs = wellNames.length > 0
   const hasSets = observationSets.length > 0
+
+  // Handle cell selection from map click
+  const handleCellSelect = useCallback((cell: { layer: number; row?: number; col?: number; node?: number }) => {
+    setLayer(cell.layer)
+    if (cell.node !== undefined) {
+      setNode(cell.node)
+    }
+    if (cell.row !== undefined) setRow(cell.row)
+    if (cell.col !== undefined) setCol(cell.col)
+    setSelectedWell('')
+  }, [])
 
   // Build observation overlay traces
   const obsTraces = useMemo(() => {
@@ -172,23 +211,33 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
         <div className="flex items-center gap-1">
           <label className="text-xs text-slate-500">L:</label>
           <input
-            type="number"
-            min={1}
-            max={metadata.nlay}
-            value={layer + 1}
-            onChange={(e) => setLayer(Math.max(0, Math.min(metadata.nlay - 1, Number(e.target.value) - 1)))}
+            type="text"
+            inputMode="numeric"
+            value={layerInput}
+            onChange={(e) => setLayerInput(e.target.value)}
+            onBlur={() => {
+              const n = parseInt(layerInput)
+              if (!isNaN(n) && n >= 1 && n <= metadata.nlay) setLayer(n - 1)
+              else setLayerInput(String(layer + 1))
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
             className="w-16 text-xs border border-slate-300 rounded px-2 py-1"
           />
         </div>
         {isUnstructured ? (
           <div className="flex items-center gap-1">
-            <label className="text-xs text-slate-500">Node:</label>
+            <label className="text-xs text-slate-500">Cell:</label>
             <input
-              type="number"
-              min={1}
-              max={metadata.ncol}
-              value={node + 1}
-              onChange={(e) => setNode(Math.max(0, Math.min(metadata.ncol - 1, Number(e.target.value) - 1)))}
+              type="text"
+              inputMode="numeric"
+              value={nodeInput}
+              onChange={(e) => setNodeInput(e.target.value)}
+              onBlur={() => {
+                const n = parseInt(nodeInput)
+                if (!isNaN(n) && n >= 1 && n <= metadata.ncol) setNode(n - 1)
+                else setNodeInput(String(node + 1))
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
               className="w-20 text-xs border border-slate-300 rounded px-2 py-1"
             />
           </div>
@@ -197,22 +246,32 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
             <div className="flex items-center gap-1">
               <label className="text-xs text-slate-500">R:</label>
               <input
-                type="number"
-                min={1}
-                max={metadata.nrow}
-                value={row + 1}
-                onChange={(e) => setRow(Math.max(0, Math.min(metadata.nrow - 1, Number(e.target.value) - 1)))}
+                type="text"
+                inputMode="numeric"
+                value={rowInput}
+                onChange={(e) => setRowInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(rowInput)
+                  if (!isNaN(n) && n >= 1 && n <= metadata.nrow) setRow(n - 1)
+                  else setRowInput(String(row + 1))
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                 className="w-16 text-xs border border-slate-300 rounded px-2 py-1"
               />
             </div>
             <div className="flex items-center gap-1">
               <label className="text-xs text-slate-500">C:</label>
               <input
-                type="number"
-                min={1}
-                max={metadata.ncol}
-                value={col + 1}
-                onChange={(e) => setCol(Math.max(0, Math.min(metadata.ncol - 1, Number(e.target.value) - 1)))}
+                type="text"
+                inputMode="numeric"
+                value={colInput}
+                onChange={(e) => setColInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(colInput)
+                  if (!isNaN(n) && n >= 1 && n <= metadata.ncol) setCol(n - 1)
+                  else setColInput(String(col + 1))
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                 className="w-16 text-xs border border-slate-300 rounded px-2 py-1"
               />
             </div>
@@ -292,84 +351,108 @@ function HeadTimeSeriesChart({ projectId, runId, summary, expanded = false, comp
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="h-72 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-        </div>
-      ) : isError ? (
-        <div className="h-72 flex items-center justify-center text-red-400 text-sm">
-          Error loading time series for this cell
-        </div>
-      ) : tsData ? (() => {
-        const dates = timesToDates(
-          summary.metadata.start_date,
-          tsData.times,
-          summary.metadata.time_unit,
-        )
-        const xValues = dates || tsData.times
-        const compareDates = compareTsData
-          ? timesToDates(summary.metadata.start_date, compareTsData.times, summary.metadata.time_unit)
-          : null
-        const compareXValues = compareTsData
-          ? (compareDates || compareTsData.times)
-          : undefined
-
-        // Convert observation times to dates if applicable
-        const datedObsTraces = obsTraces.map((trace: any) => {
-          if (dates && trace.x) {
-            const obsDates = timesToDates(summary.metadata.start_date, trace.x as number[], summary.metadata.time_unit)
-            if (obsDates) return { ...trace, x: obsDates }
-          }
-          return trace
-        })
-
-        return (
-          <Plot
-            data={[
-              {
-                x: xValues,
-                y: tsData.heads,
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: compareRunId ? `Run A ${cellLabel}` : `Simulated ${cellLabel}`,
-                line: { color: '#3b82f6', width: 2 },
-                marker: { size: 4 },
-                connectgaps: false,
-              },
-              ...(compareTsData && compareXValues ? [{
-                x: compareXValues,
-                y: compareTsData.heads,
-                type: 'scatter' as const,
-                mode: 'lines+markers' as const,
-                name: `Run B ${cellLabel}`,
-                line: { color: '#f97316', width: 2 },
-                marker: { size: 4 },
-                connectgaps: false,
-              }] : []),
-              ...datedObsTraces,
-            ]}
-            layout={{
-              autosize: true,
-              height: chartHeight,
-              margin: { l: 60, r: 20, t: 10, b: 50 },
-              xaxis: {
-                title: { text: dates ? 'Date' : timeLabel },
-                type: dates ? 'date' : undefined,
-              },
-              yaxis: { title: { text: headLabel } },
-              showlegend: true,
-              legend: { orientation: 'h', y: 1.05 },
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
+      <div className="flex gap-2" style={{ height: chartHeight }}>
+        {/* Cell location map */}
+        <div className="w-[30%] min-w-[200px] border border-slate-200 rounded overflow-hidden">
+          <CellLocationMap
+            projectId={projectId}
+            runId={runId}
+            summary={summary}
+            layer={layer}
+            row={row}
+            col={col}
+            node={node}
+            isUnstructured={isUnstructured}
+            onCellSelect={handleCellSelect}
           />
-        )
-      })()
-       : (
-        <div className="h-72 flex items-center justify-center text-slate-400">
-          Select a cell to view its head time series
         </div>
-      )}
+
+        {/* Time series chart */}
+        <div className="flex-1 min-w-0">
+          {isLoading ? (
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+            </div>
+          ) : isError ? (
+            <div className="h-full flex items-center justify-center text-red-400 text-sm">
+              Error loading time series for this cell
+            </div>
+          ) : tsData && tsData.heads.every((h: number | null) => h === null) ? (
+            <div className="h-full flex items-center justify-center text-amber-500 text-sm">
+              No head data for this cell — it may be inactive or dry
+            </div>
+          ) : tsData ? (() => {
+            const dates = timesToDates(
+              summary.metadata.start_date,
+              tsData.times,
+              summary.metadata.time_unit,
+            )
+            const xValues = dates || tsData.times
+            const compareDates = compareTsData
+              ? timesToDates(summary.metadata.start_date, compareTsData.times, summary.metadata.time_unit)
+              : null
+            const compareXValues = compareTsData
+              ? (compareDates || compareTsData.times)
+              : undefined
+
+            // Convert observation times to dates if applicable
+            const datedObsTraces = obsTraces.map((trace: any) => {
+              if (dates && trace.x) {
+                const obsDates = timesToDates(summary.metadata.start_date, trace.x as number[], summary.metadata.time_unit)
+                if (obsDates) return { ...trace, x: obsDates }
+              }
+              return trace
+            })
+
+            return (
+              <Plot
+                data={[
+                  {
+                    x: xValues,
+                    y: tsData.heads,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: compareRunId ? `Run A ${cellLabel}` : `Simulated ${cellLabel}`,
+                    line: { color: '#3b82f6', width: 2 },
+                    marker: { size: 4 },
+                    connectgaps: false,
+                  },
+                  ...(compareTsData && compareXValues ? [{
+                    x: compareXValues,
+                    y: compareTsData.heads,
+                    type: 'scatter' as const,
+                    mode: 'lines+markers' as const,
+                    name: `Run B ${cellLabel}`,
+                    line: { color: '#f97316', width: 2 },
+                    marker: { size: 4 },
+                    connectgaps: false,
+                  }] : []),
+                  ...datedObsTraces,
+                ]}
+                layout={{
+                  autosize: true,
+                  height: chartHeight,
+                  margin: { l: 60, r: 20, t: 10, b: 50 },
+                  xaxis: {
+                    title: { text: dates ? 'Date' : timeLabel },
+                    type: dates ? 'date' : undefined,
+                  },
+                  yaxis: { title: { text: headLabel } },
+                  showlegend: true,
+                  legend: { orientation: 'h', y: 1.05 },
+                }}
+                config={{ responsive: true, displayModeBar: false }}
+                style={{ width: '100%' }}
+              />
+            )
+          })()
+           : (
+            <div className="h-full flex items-center justify-center text-slate-400">
+              Select a cell to view its head time series
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
