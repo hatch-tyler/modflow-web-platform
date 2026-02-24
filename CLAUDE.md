@@ -49,6 +49,7 @@ celery -A celery_app worker --loglevel=info --concurrency=1
 ### Docker Compose
 ```bash
 docker-compose up -d                    # All services
+docker-compose up -d --build api        # Rebuild and restart a single service
 docker-compose -f docker-compose.pest.yml up -d --scale pest-local-agent=8  # PEST++ agents
 
 # Access: Web at localhost, API docs at localhost/api/v1/docs, MinIO at localhost:9001
@@ -125,6 +126,7 @@ Database engines, Redis clients, and storage services are created on first acces
 
 ### Celery Task Resilience
 - `task_acks_late=True` + `task_reject_on_worker_lost=True` + `worker_prefetch_multiplier=1` for long-running job safety
+- `worker_max_tasks_per_child=100` — recycles worker every 100 tasks to clean up memory leaks
 - Worker startup (`@worker_ready.connect`): `cleanup_orphaned_runs()` marks stuck RUNNING tasks as FAILED, clears their Redis simulation locks
 - Redis simulation lock prevents concurrent runs on same project
 - PEST cancellation via Redis flag polling
@@ -206,6 +208,30 @@ Key variables in `.env` (see `.env.example`): POSTGRES_USER/PASSWORD/DB, REDIS_P
 - Worker temp: `/tmp/modflow-runs` (downloaded models during simulation)
 - PEST workspace: `/tmp/pest-workspace` (shared volume between worker and PEST agents)
 
+## Common Gotchas
+
+### FloPy Pitfalls
+- `gwf.get_package("DIS")` returns whatever discretization package exists (DIS, DISV, or DISU) — always check `getattr(pkg, 'package_type', '').upper()` before accessing type-specific attributes
+- FloPy uses **lazy loading** for MF6 OPEN/CLOSE external arrays — `get_data()` reads the file at call time, so model files must remain on disk. If you delete the temp directory before accessing array data, values will be missing
+- DISV arrays from FloPy have shape `(nlay, ncpl)` not `(nlay, 1, ncpl)` — must reshape when checking against `(nlay, nrow, ncol)` with `nrow=1`
+- MF6 `get_data()` on RCHA/EVTA packages returns a `dict` keyed by layer (e.g. `{0: array}`), not a flat array — must check `isinstance(data, dict)` and iterate
+
+### MinIO Download Safety
+- **NEVER** use `storage.download_file()` for large binary files (HDS, CBC) — loads entire file into memory, OOMs the API container
+- **ALWAYS** use `storage.download_to_file()` which streams to disk
+- For timestep index and head statistics, check `results_summary.json` first to avoid downloading multi-GB HDS files
+- When downloading model files with `list_objects(recursive=True)`, MUST filter out `output/`, `runs/`, `cache/`, `pest/` dirs and `.hds/.cbc/.lst` files — use `_is_model_input_file()` in `mesh.py`
+
+### Multi-Output MF6 File Selection
+- MF6 models with packages like SFR/MAW produce multiple output files sharing extensions (e.g. `flow.hds`, `flow.sfr.hds`, `flow.maw.hds`)
+- Always prefer the file with fewest dots in its name (main model file): `fname.count(".") < existing.count(".")`
+- Applies to: postprocess download loop, `results.py` HDS/CBC lookups, `hds_streaming.py`, `head_extractor.py`
+
+### Path Normalizer
+- `backend/app/services/path_normalizer.py` normalizes backslash paths in OPEN/CLOSE, DATA(BINARY), FILEIN, FILEOUT, INCLUDE directives
+- Must include all MF6 package extensions (`.npf`, `.sto`, `.ic`, `.tdis`, `.gwf`, `.disv`, `.rcha`, `.evta`, `.chd6`, `.wel6`, `.riv6`, `.drn6`, `.ghb6`, `.sfr6`, `.oc6`, etc.)
+- Also provides zip bomb protection (2x compressed size limit) and forces Unix line endings
+
 ## Infrastructure Notes
 
 - Nginx reverse proxy routes: `/api/` → backend, `/` → frontend, WebSocket upgrade for `/api/v1/runs/`
@@ -215,3 +241,5 @@ Key variables in `.env` (see `.env.example`): POSTGRES_USER/PASSWORD/DB, REDIS_P
 - Frontend build requires `NODE_OPTIONS="--max-old-space-size=4096"` due to Plotly.js bundle size
 - Docker service health checks: API/worker at 30s intervals; worker has 60s `start_period` for slow startup
 - All services on single `modflow-network` bridge; PEST compose files reference it as external
+- SSE routes in nginx config **must** come before generic `/api/` location block; they disable buffering and use 24h timeout for long simulations
+- Health check script (`backend/scripts/healthcheck.py`) detects zombie worker state and triggers container restart

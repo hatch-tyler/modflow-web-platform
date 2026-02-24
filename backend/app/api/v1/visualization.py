@@ -1,5 +1,6 @@
 """3D visualization endpoints for MODFLOW grids."""
 
+import json as json_mod
 import logging
 import struct
 from uuid import UUID
@@ -468,29 +469,83 @@ async def list_arrays(
     return {"arrays": available}
 
 
-@router.get("/boundaries")
-async def list_boundaries(
-    project_id: UUID,
-    stress_period: int = 0,
-    db: AsyncSession = Depends(get_db),
+def _boundary_cache_path(project_id: UUID, stress_period: int) -> str:
+    """MinIO path for cached boundary data."""
+    return f"projects/{project_id}/cache/boundaries_sp{stress_period}.json"
+
+
+def _load_boundary_cache(project_id: UUID, stress_period: int) -> dict | None:
+    """Try to load cached boundary data from MinIO."""
+    storage = get_storage_service()
+    cache_path = _boundary_cache_path(project_id, stress_period)
+    try:
+        if storage.object_exists(settings.minio_bucket_models, cache_path):
+            data = storage.download_file(settings.minio_bucket_models, cache_path)
+            return json_mod.loads(data)
+    except Exception:
+        pass
+    return None
+
+
+def _save_boundary_cache(
+    project_id: UUID, stress_period: int, boundaries: dict, nper: int
+) -> None:
+    """Save boundary data to MinIO cache."""
+    storage = get_storage_service()
+    cache_path = _boundary_cache_path(project_id, stress_period)
+
+    # Build full cache: summary + detailed per-package data
+    summary = {}
+    packages = {}
+    for pkg_type, pkg in boundaries.items():
+        pkg_dict = boundary_package_to_dict(pkg)
+        summary[pkg_type] = {
+            "name": pkg.name,
+            "description": pkg.description,
+            "cell_count": len(pkg.cells),
+            "value_names": pkg.value_names,
+        }
+        packages[pkg_type] = pkg_dict
+
+    cache_obj = {
+        "stress_period": stress_period,
+        "nper": nper,
+        "summary": summary,
+        "packages": packages,
+    }
+    try:
+        import io
+        cache_bytes = json_mod.dumps(cache_obj).encode()
+        storage.upload_file(
+            settings.minio_bucket_models,
+            cache_path,
+            io.BytesIO(cache_bytes),
+            len(cache_bytes),
+            "application/json",
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to save boundary cache for {project_id}: {exc}")
+
+
+async def _load_boundaries_with_cache(
+    project_id: UUID, storage_path: str, stress_period: int, nper: int
 ) -> dict:
     """
-    List all boundary condition packages and their cell counts.
-
-    Query params:
-    - stress_period: Stress period index (0-based), defaults to 0
+    Load boundary data, using MinIO cache when available.
+    Falls back to loading the full model if no cache exists.
+    Returns the cache dict with 'summary' and 'packages' keys.
     """
     import asyncio
 
-    project = await get_project_or_404(project_id, db)
+    # Check cache first (small JSON, fast)
+    cached = await asyncio.to_thread(_load_boundary_cache, project_id, stress_period)
+    if cached is not None:
+        return cached
 
-    if not project.storage_path:
-        return {"boundaries": {}, "stress_period": stress_period, "nper": project.nper}
-
-    # Load model - run in thread pool to avoid blocking
+    # Cache miss — load model (expensive)
     try:
         model = await asyncio.to_thread(
-            load_model_from_storage, str(project_id), project.storage_path
+            load_model_from_storage, str(project_id), storage_path
         )
     except MemoryError:
         logger.error(f"OOM loading model for project {project_id} (boundaries)")
@@ -505,12 +560,16 @@ async def list_boundaries(
             detail=f"Failed to load model: {str(e)}",
         )
     if model is None:
-        return {"boundaries": {}, "stress_period": stress_period, "nper": project.nper}
+        return {"stress_period": stress_period, "nper": nper, "summary": {}, "packages": {}}
 
     boundaries = await asyncio.to_thread(get_boundary_conditions, model, stress_period)
 
-    # Return summary without full cell data
+    # Save to cache for next time
+    await asyncio.to_thread(_save_boundary_cache, project_id, stress_period, boundaries, nper)
+
+    # Build response
     summary = {}
+    packages = {}
     for pkg_type, pkg in boundaries.items():
         summary[pkg_type] = {
             "name": pkg.name,
@@ -518,9 +577,34 @@ async def list_boundaries(
             "cell_count": len(pkg.cells),
             "value_names": pkg.value_names,
         }
+        packages[pkg_type] = boundary_package_to_dict(pkg)
+
+    return {"stress_period": stress_period, "nper": nper, "summary": summary, "packages": packages}
+
+
+@router.get("/boundaries")
+async def list_boundaries(
+    project_id: UUID,
+    stress_period: int = 0,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    List all boundary condition packages and their cell counts.
+
+    Query params:
+    - stress_period: Stress period index (0-based), defaults to 0
+    """
+    project = await get_project_or_404(project_id, db)
+
+    if not project.storage_path:
+        return {"boundaries": {}, "stress_period": stress_period, "nper": project.nper}
+
+    cache_data = await _load_boundaries_with_cache(
+        project_id, project.storage_path, stress_period, project.nper or 1
+    )
 
     return {
-        "boundaries": summary,
+        "boundaries": cache_data.get("summary", {}),
         "stress_period": stress_period,
         "nper": project.nper,
     }
@@ -544,8 +628,6 @@ async def get_boundary_package(
 
     Returns cell locations and values for visualization.
     """
-    import asyncio
-
     project = await get_project_or_404(project_id, db)
 
     if not project.storage_path:
@@ -554,39 +636,20 @@ async def get_boundary_package(
             detail="No model files found",
         )
 
-    # Load model - run in thread pool to avoid blocking
-    try:
-        model = await asyncio.to_thread(
-            load_model_from_storage, str(project_id), project.storage_path
-        )
-    except MemoryError:
-        logger.error(f"OOM loading model for project {project_id} (boundary package)")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Insufficient memory to load model. Try again shortly.",
-        )
-    except Exception as e:
-        logger.error(f"Failed to load model for project {project_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to load model: {str(e)}",
-        )
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to load model",
-        )
+    cache_data = await _load_boundaries_with_cache(
+        project_id, project.storage_path, stress_period, project.nper or 1
+    )
 
-    boundaries = await asyncio.to_thread(get_boundary_conditions, model, stress_period)
     package_type_upper = package_type.upper()
+    packages = cache_data.get("packages", {})
 
-    if package_type_upper not in boundaries:
+    if package_type_upper not in packages:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Boundary package '{package_type}' not found in model",
         )
 
-    return boundary_package_to_dict(boundaries[package_type_upper])
+    return packages[package_type_upper]
 
 
 @router.post("/grid/regenerate-cache")

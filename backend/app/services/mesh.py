@@ -137,11 +137,26 @@ class GridMesh:
         return header + centers_flat + grid_data + top + botm
 
 
+def _is_model_input_file(rel_path: str) -> bool:
+    """Check if a relative path is a model input file (not output/results)."""
+    parts = rel_path.replace("\\", "/").split("/")
+    # Skip output directories (simulation results stored alongside model)
+    skip_dirs = {"output", "runs", "cache", "pest"}
+    if parts[0].lower() in skip_dirs:
+        return False
+    # Skip large binary result files that may be at top level
+    lower = rel_path.lower()
+    if lower.endswith((".hds", ".hed", ".cbc", ".bud", ".cbb", ".lst")):
+        return False
+    return True
+
+
 def load_model_from_storage(project_id: str, storage_path: str) -> Optional[object]:
     """
     Load a MODFLOW model from MinIO storage.
 
-    Downloads files to a temp directory and loads with FloPy.
+    Downloads model input files to a temp directory and loads with FloPy.
+    Skips output/results directories to avoid downloading multi-GB binary files.
     Uses a per-project lock to prevent concurrent loads that could cause OOM.
     """
     lock = _get_project_lock(project_id)
@@ -151,7 +166,7 @@ def load_model_from_storage(project_id: str, storage_path: str) -> Optional[obje
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
-            # Download all model files
+            # Download model input files only (skip output/results)
             files = storage.list_objects(
                 settings.minio_bucket_models,
                 prefix=storage_path,
@@ -162,6 +177,10 @@ def load_model_from_storage(project_id: str, storage_path: str) -> Optional[obje
                 # Get relative path within model directory
                 rel_path = obj_name[len(storage_path):].lstrip("/")
                 if not rel_path:
+                    continue
+
+                # Skip output/results directories and large binary files
+                if not _is_model_input_file(rel_path):
                     continue
 
                 local_path = temp_path / rel_path
@@ -199,6 +218,8 @@ def load_and_extract_array(
             for obj_name in files:
                 rel_path = obj_name[len(storage_path):].lstrip("/")
                 if not rel_path:
+                    continue
+                if not _is_model_input_file(rel_path):
                     continue
                 local_path = temp_path / rel_path
                 local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,6 +267,8 @@ def load_and_list_arrays(
             for obj_name in files:
                 rel_path = obj_name[len(storage_path):].lstrip("/")
                 if not rel_path:
+                    continue
+                if not _is_model_input_file(rel_path):
                     continue
                 local_path = temp_path / rel_path
                 local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1623,7 +1646,18 @@ def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(rch, 'recharge'):
                 data = rch.recharge.get_data()
                 if data is not None:
-                    values = np.array(data, dtype=float).flatten().tolist()
+                    # MF6 get_data() may return a dict keyed by layer
+                    if isinstance(data, dict):
+                        all_vals = []
+                        for key in sorted(data.keys()):
+                            layer_data = data[key]
+                            if layer_data is not None:
+                                all_vals.extend(
+                                    np.array(layer_data, dtype=float).flatten().tolist()
+                                )
+                        values = all_vals
+                    else:
+                        values = np.array(data, dtype=float).flatten().tolist()
         except Exception as e:
             print(f"Error extracting MF6 RCH data: {e}")
             return None
@@ -1676,7 +1710,18 @@ def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(evt, 'rate'):
                 data = evt.rate.get_data()
                 if data is not None:
-                    values = np.array(data, dtype=float).flatten().tolist()
+                    # MF6 get_data() may return a dict keyed by layer
+                    if isinstance(data, dict):
+                        all_vals = []
+                        for key in sorted(data.keys()):
+                            layer_data = data[key]
+                            if layer_data is not None:
+                                all_vals.extend(
+                                    np.array(layer_data, dtype=float).flatten().tolist()
+                                )
+                        values = all_vals
+                    else:
+                        values = np.array(data, dtype=float).flatten().tolist()
         except Exception as e:
             print(f"Error extracting MF6 EVT data: {e}")
             return None

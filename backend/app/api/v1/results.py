@@ -779,13 +779,18 @@ async def get_timeseries(
 
     model_type = project.model_type.value if project and project.model_type else "mf6"
     is_unstructured = model_type == "mfusg"
+    is_vertex = getattr(project, "grid_type", None) == "vertex"
 
-    if is_unstructured:
+    if is_unstructured or is_vertex:
         if node is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Parameter 'node' is required for unstructured grid models",
+                detail="Parameter 'node' is required for unstructured/vertex grid models",
             )
+        if is_vertex:
+            # DISV stores nrow=1, ncol=ncpl; map node to row=0, col=node
+            row = 0
+            col = node
     else:
         if row is None or col is None:
             raise HTTPException(
@@ -805,12 +810,17 @@ async def get_timeseries(
     if cached:
         return cached
 
-    # For structured grids, try streaming extraction first (much faster for large files)
+    # For structured/vertex grids, try streaming extraction first (much faster for large files)
     if not is_unstructured and run.results_path:
         streaming_result = get_timeseries_streaming(
             project_id_str, run_id_str, run.results_path, layer, row, col
         )
         if "error" not in streaming_result:
+            if is_vertex:
+                # Replace row/col with node in response
+                streaming_result.pop("row", None)
+                streaming_result.pop("col", None)
+                streaming_result["node"] = node
             return streaming_result
 
     # Fall back to full file download for unstructured grids or if streaming fails
@@ -897,7 +907,7 @@ async def get_timeseries(
         "times": times,
         "heads": heads,
     }
-    if is_unstructured:
+    if is_unstructured or is_vertex:
         response["node"] = node
     else:
         response["row"] = row
@@ -1268,13 +1278,18 @@ async def export_timeseries_csv(
 
     model_type = project.model_type.value if project and project.model_type else "mf6"
     is_unstructured = model_type == "mfusg"
+    is_vertex = getattr(project, "grid_type", None) == "vertex"
 
-    if is_unstructured:
+    if is_unstructured or is_vertex:
         if node is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Parameter 'node' is required for unstructured grid models",
+                detail="Parameter 'node' is required for unstructured/vertex grid models",
             )
+        if is_vertex:
+            # DISV stores nrow=1, ncol=ncpl; map node to row=0, col=node
+            row = 0
+            col = node
     else:
         if row is None or col is None:
             raise HTTPException(
@@ -1358,7 +1373,7 @@ async def export_timeseries_csv(
     for t, h in zip(times, heads):
         writer.writerow([t, h if h is not None else ""])
 
-    if is_unstructured:
+    if is_unstructured or is_vertex:
         filename = f"timeseries_L{layer}_N{node}.csv"
     else:
         filename = f"timeseries_L{layer}_R{row}_C{col}.csv"
