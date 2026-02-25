@@ -347,10 +347,14 @@ export default function DashboardPage() {
   })
 
   // Fetch live results for active runs - must be before any early returns to satisfy Rules of Hooks
+  const activeRunId = activeRun?.id
   const { data: liveSummary, isLoading: liveSummaryLoading } = useQuery({
-    queryKey: ['live-results-summary', projectId, activeRun?.id],
-    queryFn: () => resultsApi.getLiveSummary(projectId!, activeRun!.id),
-    enabled: !!projectId && !!activeRun && activeRun.status === 'running',
+    queryKey: ['live-results-summary', projectId, activeRunId],
+    queryFn: () => {
+      if (!projectId || !activeRunId) throw new Error('No active run')
+      return resultsApi.getLiveSummary(projectId, activeRunId)
+    },
+    enabled: !!projectId && !!activeRunId && activeRun?.status === 'running',
     refetchInterval: pollingInterval,
     retry: false,
   })

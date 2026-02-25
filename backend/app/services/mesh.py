@@ -1,5 +1,6 @@
 """3D mesh generation service for MODFLOW grids."""
 
+import collections
 import struct
 import tempfile
 import threading
@@ -16,17 +17,30 @@ from app.services.storage import get_storage_service
 
 settings = get_settings()
 
-# Per-project lock to prevent concurrent model loads that cause OOM
-_model_load_locks: dict[str, threading.Lock] = {}
+# Per-project lock to prevent concurrent model loads that cause OOM.
+# Bounded to 256 entries (LRU eviction) to prevent unbounded growth.
+_MAX_LOCKS = 256
+_model_load_locks: collections.OrderedDict[str, threading.Lock] = collections.OrderedDict()
 _locks_lock = threading.Lock()
 
 
 def _get_project_lock(project_id: str) -> threading.Lock:
     """Get or create a per-project lock for model loading."""
     with _locks_lock:
-        if project_id not in _model_load_locks:
-            _model_load_locks[project_id] = threading.Lock()
-        return _model_load_locks[project_id]
+        if project_id in _model_load_locks:
+            _model_load_locks.move_to_end(project_id)
+            return _model_load_locks[project_id]
+        lock = threading.Lock()
+        _model_load_locks[project_id] = lock
+        # Evict oldest entries if over limit (only unlocked ones)
+        while len(_model_load_locks) > _MAX_LOCKS:
+            oldest_key, oldest_lock = next(iter(_model_load_locks.items()))
+            if not oldest_lock.locked():
+                del _model_load_locks[oldest_key]
+            else:
+                # Don't evict an actively-held lock; stop evicting
+                break
+        return lock
 
 
 def _get_mf6_grid_array(mf_array, shape: Union[int, tuple]) -> np.ndarray:

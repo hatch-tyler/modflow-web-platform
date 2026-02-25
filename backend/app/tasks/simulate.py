@@ -378,32 +378,29 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
         if run.status == RunStatus.FAILED:
             publish("Task requeued but simulation already failed — skipping.")
             return {"status": "already_failed", "run_id": run_id}
-        if run.status == RunStatus.RUNNING:
-            # Another worker may already be executing this task.
-            # Use a Redis lock to prevent duplicate execution.
-            lock_key = f"simulation_lock:{run_id}"
-            acquired = redis_client.set(lock_key, "1", nx=True, ex=7200)  # 2hr TTL
-            if not acquired:
-                publish("Task requeued but simulation is already running — skipping duplicate.")
-                return {"status": "already_running", "run_id": run_id}
+
+        # Acquire the Redis lock FIRST to prevent race conditions.
+        # If two workers pick up the same task, only one gets the lock.
+        lock_key = f"simulation_lock:{run_id}"
+        acquired = redis_client.set(lock_key, "1", nx=True, ex=7200)  # 2hr TTL
+        if not acquired:
+            publish("Task requeued but simulation is already running — skipping duplicate.")
+            return {"status": "already_running", "run_id": run_id}
 
         if not project.storage_path:
             run.status = RunStatus.FAILED
             run.error_message = "No model files found"
             db.commit()
+            redis_client.delete(lock_key)
             return {"error": "No model files found"}
 
         model_type = project.model_type.value if project.model_type else "mf6"
 
-        # Update run status to running
+        # Update run status to running (lock is already held)
         run.status = RunStatus.RUNNING
         run.started_at = datetime.utcnow()
         run.celery_task_id = self.request.id
         db.commit()
-
-        # Set the execution lock (for tasks that start in QUEUED/PENDING status)
-        lock_key = f"simulation_lock:{run_id}"
-        redis_client.set(lock_key, "1", nx=True, ex=7200)
 
         publish(f"Starting simulation (model type: {model_type})...")
 

@@ -1,5 +1,5 @@
-import { useCallback } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, FileText } from 'lucide-react'
 import { fileEditorApi } from '../../services/api'
 import { useFileEditorStore } from '../../store/fileEditorStore'
@@ -18,6 +18,8 @@ export default function FileEditorPane({
   filePath,
   modelType,
 }: FileEditorPaneProps) {
+  const queryClient = useQueryClient()
+  const [saveError, setSaveError] = useState<string | null>(null)
   const {
     openFilePath,
     editedContent,
@@ -60,13 +62,20 @@ export default function FileEditorPane({
       return fileEditorApi.saveContent(projectId, filePath, editedContent)
     },
     onSuccess: () => {
+      setSaveError(null)
       if (editedContent) {
         markSaved(editedContent)
       }
+      // Invalidate cached file content and project data so other views see updates
+      queryClient.invalidateQueries({ queryKey: ['file-content', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       // Refresh backups
       if (filePath) {
         fileEditorApi.getBackups(projectId, filePath).then(r => setBackups(r.backups))
       }
+    },
+    onError: (error: Error) => {
+      setSaveError(error.message || 'Failed to save file')
     },
   })
 
@@ -131,10 +140,23 @@ export default function FileEditorPane({
         />
       </div>
 
+      {/* Save error banner */}
+      {saveError && (
+        <div className="flex items-center justify-between px-3 py-1 bg-red-50 border-t border-red-200 text-xs text-red-600">
+          <span>Save failed: {saveError}</span>
+          <button
+            onClick={() => setSaveError(null)}
+            className="ml-2 underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Status bar */}
       <div className="flex items-center justify-between h-6 px-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-400">
         <span>
-          {saveMutation.isPending ? 'Saving...' : saveMutation.isSuccess ? 'Saved' : isDirty ? 'Modified' : 'Ready'}
+          {saveMutation.isPending ? 'Saving...' : saveError ? 'Save failed' : saveMutation.isSuccess ? 'Saved' : isDirty ? 'Modified' : 'Ready'}
         </span>
         <span>
           {editedContent ? `${editedContent.split('\n').length} lines` : ''}

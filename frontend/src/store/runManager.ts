@@ -148,31 +148,39 @@ export const useRunManager = create<RunManagerState>((set, get) => ({
           const run = get().activeRuns[runId]
           if (run && run.status === 'running') {
             const newES = connectSSE()
-            set((s) => ({
-              activeRuns: {
-                ...s.activeRuns,
-                [runId]: {
-                  ...s.activeRuns[runId],
-                  eventSource: newES,
-                  reconnectAttempts: attempts,
-                  reconnectTimer: null,
+            set((s) => {
+              // Re-check inside setter — run may have been stopped between
+              // the outer check and this state update
+              if (!s.activeRuns[runId]) return s
+              return {
+                activeRuns: {
+                  ...s.activeRuns,
+                  [runId]: {
+                    ...s.activeRuns[runId],
+                    eventSource: newES,
+                    reconnectAttempts: attempts,
+                    reconnectTimer: null,
+                  },
                 },
-              },
-            }))
+              }
+            })
           }
         }, delay)
 
-        set((s) => ({
-          activeRuns: {
-            ...s.activeRuns,
-            [runId]: {
-              ...s.activeRuns[runId],
-              eventSource: null,
-              reconnectAttempts: attempts,
-              reconnectTimer: timer,
+        set((s) => {
+          if (!s.activeRuns[runId]) return s
+          return {
+            activeRuns: {
+              ...s.activeRuns,
+              [runId]: {
+                ...s.activeRuns[runId],
+                eventSource: null,
+                reconnectAttempts: attempts,
+                reconnectTimer: timer,
+              },
             },
-          },
-        }))
+          }
+        })
       }
 
       return eventSource

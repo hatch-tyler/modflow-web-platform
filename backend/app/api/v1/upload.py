@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import logging
 import tempfile
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import select
@@ -158,8 +161,10 @@ def process_upload_sync(
                 storage.delete_prefix(settings.minio_bucket_models, storage_path)
                 delete_grid_cache(project_id)
                 delete_array_caches(project_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Failed to clean old files for project %s: %s", project_id, e
+                )
 
             # Get list of files to upload
             files_to_upload = [f for f in extracted_path.rglob("*") if f.is_file()]
@@ -404,10 +409,9 @@ async def upload_model(
     job_id = create_upload_job(str(project_id))
 
     if async_mode:
-        # Run processing in background thread and return immediately
-        import concurrent.futures
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        executor.submit(process_upload_sync, job_id, str(project_id), contents)
+        # Run processing in background thread via FastAPI's BackgroundTasks
+        # (avoids leaking a ThreadPoolExecutor on every async upload)
+        background_tasks.add_task(process_upload_sync, job_id, str(project_id), contents)
 
         return {"job_id": job_id, "message": "Upload started, poll /upload/status/{job_id} for progress"}
 
