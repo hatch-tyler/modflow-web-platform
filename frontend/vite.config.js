@@ -26,6 +26,9 @@ export default defineConfig({
             },
         },
     },
+    optimizeDeps: {
+        include: ['@monaco-editor/react', 'monaco-editor'],
+    },
     build: {
         outDir: 'dist',
         sourcemap: true,
