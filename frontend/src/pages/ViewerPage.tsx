@@ -204,6 +204,13 @@ export default function ViewerPage() {
     }
   }
 
+  // Compute cross-section cell mask
+  const cellMask = useMemo(() => {
+    if (!gridData || crossSectionLine.length < 2 || crossSectionSide === 'both') return undefined
+    const ncells = gridData.nlay * gridData.nrow * gridData.ncol
+    return computeCellMask(crossSectionLine, gridData.centers, ncells, crossSectionSide)
+  }, [gridData, crossSectionLine, crossSectionSide])
+
   // Toggle boundary visibility
   const toggleBoundary = (type: string) => {
     setVisibleBoundaries(prev => ({
@@ -239,13 +246,6 @@ export default function ViewerPage() {
       acc[type] = pkg
       return acc
     }, {} as Record<string, BoundaryPackage>)
-
-  // Compute cross-section cell mask
-  const cellMask = useMemo(() => {
-    if (!gridData || crossSectionLine.length < 2 || crossSectionSide === 'both') return undefined
-    const ncells = gridData.nlay * gridData.nrow * gridData.ncol
-    return computeCellMask(crossSectionLine, gridData.centers, ncells, crossSectionSide)
-  }, [gridData, crossSectionLine, crossSectionSide])
 
   return (
     <div className="h-[calc(100vh-8rem)] flex gap-4">
