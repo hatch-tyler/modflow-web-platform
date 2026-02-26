@@ -142,10 +142,10 @@ services:
     # Override Dockerfile health check with more appropriate timing
     healthcheck:
       test: ["CMD", "python", "scripts/healthcheck.py", "api"]
-      interval: 30s
+      interval: 15s
       timeout: 10s
       start_period: 60s
-      retries: 5
+      retries: 3
     deploy:
       resources:
         limits:
@@ -379,6 +379,31 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # =============================================================================
+  # Autoheal — restarts containers marked "unhealthy" by Docker health checks.
+  # Docker Compose "restart: unless-stopped" only restarts on process EXIT,
+  # not on unhealthy status. This sidecar bridges the gap.
+  # =============================================================================
+  autoheal:
+    image: willfarrell/autoheal
+    container_name: modflow-autoheal
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=120
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 # =============================================================================
 # Networks

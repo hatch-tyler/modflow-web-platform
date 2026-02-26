@@ -25,78 +25,81 @@ def check_api() -> bool:
     import urllib.request
     import urllib.error
 
-    # Detect "dead worker" state: uvicorn's reloader is alive but its worker
-    # subprocess has crashed (zombie or fully reaped by tini). In this state
-    # every HTTP request hangs forever because no worker is serving.
+    # Detect "dead worker" state using /proc filesystem inspection.
+    # Uvicorn's reloader (PID 1 or child of tini) is alive but its worker
+    # subprocess has crashed (zombie or fully reaped). In this state every
+    # HTTP request hangs forever because no worker is serving.
     #
-    # How this happens:
-    #  1. --reload watcher detects file change (host volume mount)
-    #  2. Reloader kills old worker, forks new one
-    #  3. New worker crashes on import (partial file write, syntax error, etc.)
-    #  4. Reloader has no process.is_alive() check — it blocks waiting for
-    #     the *next* file change, never noticing the worker is dead.
-    #
-    # Fix: detect the missing worker and SIGTERM PID 1 to restart the container.
+    # Previous approach parsed `ps aux` output by column index, which broke
+    # when column positions shifted due to username length, timestamps, etc.
+    # /proc/[pid]/status provides structured, unambiguous process state.
     try:
-        import subprocess
-        result = subprocess.run(
-            ["ps", "aux"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
-        if result.returncode == 0:
-            lines = result.stdout.splitlines()
-            # Count live python processes (exclude: ps itself, healthcheck, zombies)
-            live_python_procs = 0
-            has_zombie = False
-            for line in lines[1:]:
-                cols = line.split()
-                if len(cols) < 8:
-                    continue
-                stat = cols[7] if len(cols) > 7 else ""
-                cmd = " ".join(cols[10:]) if len(cols) > 10 else ""
-                if "python" not in cmd and "uvicorn" not in cmd:
-                    continue
-                if "healthcheck" in cmd or "ps aux" in cmd:
-                    continue
-                if stat.startswith("Z") or "<defunct>" in line:
-                    has_zombie = True
-                    continue
-                live_python_procs += 1
+        live_workers = 0
+        has_zombie = False
 
-            # With --reload, we expect at least 2 python processes:
-            # the reloader supervisor and the worker. If only 1 (the reloader)
-            # or if there's a zombie and only the reloader, the worker is dead.
-            if live_python_procs <= 1 and (has_zombie or live_python_procs == 1):
-                # Only kill if the container has been up long enough to have started
-                # (avoid false positives during startup)
-                uptime_file = "/proc/1/stat"
-                try:
-                    with open(uptime_file, "r") as f:
-                        # Field 22 is starttime in jiffies
-                        stat_fields = f.read().split()
-                        start_jiffies = int(stat_fields[21])
-                        hz = os.sysconf("SC_CLK_TCK")
-                        with open("/proc/uptime", "r") as uf:
-                            system_uptime = float(uf.read().split()[0])
-                        proc_uptime = system_uptime - (start_jiffies / hz)
-                        if proc_uptime < 30:
-                            pass  # Still starting up, don't kill
-                        else:
-                            print(
-                                f"Uvicorn worker is dead (live_procs={live_python_procs}, "
-                                f"zombie={has_zombie}, uptime={proc_uptime:.0f}s). "
-                                f"Sending SIGTERM to trigger container restart.",
-                                file=sys.stderr,
-                            )
-                            os.kill(1, signal.SIGTERM)
-                            return False
-                except Exception:
-                    # Can't read proc, fall through to HTTP check
-                    pass
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            pid = entry
+            try:
+                # Read process state from /proc/[pid]/status
+                with open(f"/proc/{pid}/status", "r") as f:
+                    status_lines = f.read()
+
+                state = ""
+                for line in status_lines.splitlines():
+                    if line.startswith("State:"):
+                        # Format: "State:\tS (sleeping)" — grab the letter
+                        state = line.split("\t", 1)[1][0] if "\t" in line else ""
+                        break
+
+                # Read command line from /proc/[pid]/cmdline (null-separated)
+                with open(f"/proc/{pid}/cmdline", "r") as f:
+                    cmdline = f.read().replace("\0", " ").strip()
+
+                # Only consider python/uvicorn processes
+                if "python" not in cmdline and "uvicorn" not in cmdline:
+                    continue
+                # Skip our own healthcheck process
+                if "healthcheck" in cmdline:
+                    continue
+
+                if state == "Z":
+                    has_zombie = True
+                else:
+                    live_workers += 1
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
+                # Process exited between listdir and read — skip
+                continue
+
+        # With --reload, we expect at least 2 python processes:
+        # the reloader supervisor and the worker. If only 1 (the reloader)
+        # or 0, and especially if there's a zombie, the worker is dead.
+        if live_workers <= 1:
+            # Only kill if the container has been up long enough to have started
+            # (avoid false positives during startup)
+            try:
+                with open("/proc/1/stat", "r") as f:
+                    stat_fields = f.read().split()
+                    start_jiffies = int(stat_fields[21])
+                hz = os.sysconf("SC_CLK_TCK")
+                with open("/proc/uptime", "r") as uf:
+                    system_uptime = float(uf.read().split()[0])
+                proc_uptime = system_uptime - (start_jiffies / hz)
+                if proc_uptime >= 30:
+                    print(
+                        f"Uvicorn worker is dead (live_workers={live_workers}, "
+                        f"zombie={has_zombie}, uptime={proc_uptime:.0f}s). "
+                        f"Sending SIGTERM to trigger container restart.",
+                        file=sys.stderr,
+                    )
+                    os.kill(1, signal.SIGTERM)
+                    return False
+            except Exception:
+                # Can't read proc uptime, fall through to HTTP check
+                pass
     except Exception:
-        pass  # If process check fails, fall through to HTTP check
+        pass  # If /proc inspection fails, fall through to HTTP check
 
     try:
         url = "http://localhost:8000/api/v1/health/live"

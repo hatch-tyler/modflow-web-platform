@@ -1,5 +1,6 @@
 """Health check endpoints with graceful degradation."""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -14,6 +15,10 @@ from app.rate_limit import limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/health", tags=["health"])
 settings = get_settings()
+
+# Timeout for individual service checks (seconds).
+# All checks run concurrently, so worst-case response time ≈ this value.
+_CHECK_TIMEOUT = 3.0
 
 
 class ServiceStatus(BaseModel):
@@ -35,11 +40,17 @@ class HealthCheck(BaseModel):
 async def check_database() -> ServiceStatus:
     """Check database connectivity with graceful handling."""
     try:
-        from app.models.base import get_async_session_factory
-        factory = get_async_session_factory()
-        async with factory() as session:
-            await session.execute(text("SELECT 1"))
-        return ServiceStatus(name="database", status="healthy")
+        async def _check():
+            from app.models.base import get_async_session_factory
+            factory = get_async_session_factory()
+            async with factory() as session:
+                await session.execute(text("SELECT 1"))
+            return ServiceStatus(name="database", status="healthy")
+
+        return await asyncio.wait_for(_check(), timeout=_CHECK_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.warning("Database health check timed out")
+        return ServiceStatus(name="database", status="unhealthy", message="Timeout")
     except Exception as e:
         logger.warning(f"Database health check failed: {e}")
         return ServiceStatus(name="database", status="unhealthy", message=str(e))
@@ -48,10 +59,16 @@ async def check_database() -> ServiceStatus:
 async def check_redis() -> ServiceStatus:
     """Check Redis connectivity with graceful handling."""
     try:
-        from app.services.redis_manager import get_async_client
-        redis_client = await get_async_client()
-        await redis_client.ping()
-        return ServiceStatus(name="redis", status="healthy")
+        async def _check():
+            from app.services.redis_manager import get_async_client
+            redis_client = await get_async_client()
+            await redis_client.ping()
+            return ServiceStatus(name="redis", status="healthy")
+
+        return await asyncio.wait_for(_check(), timeout=_CHECK_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.debug("Redis health check timed out")
+        return ServiceStatus(name="redis", status="unhealthy", message="Timeout")
     except Exception as e:
         logger.debug(f"Redis health check failed: {e}")
         return ServiceStatus(name="redis", status="unhealthy", message=str(e))
@@ -60,11 +77,19 @@ async def check_redis() -> ServiceStatus:
 async def check_minio() -> ServiceStatus:
     """Check MinIO connectivity with graceful handling."""
     try:
-        from app.services.storage import get_storage_service
-        storage = get_storage_service()
-        if storage.is_available():
-            return ServiceStatus(name="minio", status="healthy")
-        return ServiceStatus(name="minio", status="unhealthy", message="Connection failed")
+        async def _check():
+            from app.services.storage import get_storage_service
+            storage = get_storage_service()
+            loop = asyncio.get_event_loop()
+            available = await loop.run_in_executor(None, storage.is_available)
+            if available:
+                return ServiceStatus(name="minio", status="healthy")
+            return ServiceStatus(name="minio", status="unhealthy", message="Connection failed")
+
+        return await asyncio.wait_for(_check(), timeout=_CHECK_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.debug("MinIO health check timed out")
+        return ServiceStatus(name="minio", status="unhealthy", message="Timeout")
     except Exception as e:
         logger.debug(f"MinIO health check failed: {e}")
         return ServiceStatus(name="minio", status="unhealthy", message=str(e))
@@ -78,9 +103,11 @@ async def health_check() -> HealthCheck:
     Returns overall health status and individual service statuses.
     The API can still function in degraded mode if some services are down.
     """
-    db_status = await check_database()
-    redis_status = await check_redis()
-    minio_status = await check_minio()
+    db_status, redis_status, minio_status = await asyncio.gather(
+        check_database(),
+        check_redis(),
+        check_minio(),
+    )
 
     statuses = [db_status, redis_status, minio_status]
     healthy_count = sum(1 for s in statuses if s.status == "healthy")
@@ -142,9 +169,11 @@ async def detailed_health(request: Request) -> dict:
     Note: host/port details are intentionally omitted to avoid
     exposing internal infrastructure information.
     """
-    db_status = await check_database()
-    redis_status = await check_redis()
-    minio_status = await check_minio()
+    db_status, redis_status, minio_status = await asyncio.gather(
+        check_database(),
+        check_redis(),
+        check_minio(),
+    )
 
     return {
         "version": settings.app_version,

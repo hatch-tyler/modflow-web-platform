@@ -40,6 +40,8 @@ def get_async_engine():
             pool_pre_ping=True,
             pool_size=10,
             max_overflow=20,
+            pool_timeout=30,
+            connect_args={"command_timeout": 30},
         )
     return _async_engine
 
@@ -70,6 +72,8 @@ def get_sync_engine():
             pool_pre_ping=True,
             pool_size=2,
             max_overflow=3,
+            pool_timeout=30,
+            connect_args={"options": "-c statement_timeout=30000"},
         )
     return _sync_engine
 

@@ -46,6 +46,7 @@ def _get_sync_pool() -> redis.ConnectionPool:
                     decode_responses=True,
                     socket_keepalive=True,
                     socket_connect_timeout=5,
+                    socket_timeout=5,
                     health_check_interval=30,
                 )
     return _sync_pool
@@ -86,6 +87,7 @@ def _get_async_pool() -> aioredis.ConnectionPool:
                     decode_responses=True,
                     socket_keepalive=True,
                     socket_connect_timeout=5,
+                    socket_timeout=5,
                     health_check_interval=30,
                 )
     return _async_pool
@@ -127,6 +129,7 @@ def _get_sync_cache_pool() -> redis.ConnectionPool:
                     decode_responses=True,
                     socket_keepalive=True,
                     socket_connect_timeout=5,
+                    socket_timeout=5,
                     health_check_interval=30,
                 )
     return _sync_cache_pool
@@ -165,6 +168,7 @@ def _get_async_cache_pool() -> aioredis.ConnectionPool:
                     decode_responses=True,
                     socket_keepalive=True,
                     socket_connect_timeout=5,
+                    socket_timeout=5,
                     health_check_interval=30,
                 )
     return _async_cache_pool

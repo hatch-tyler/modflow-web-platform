@@ -15,7 +15,7 @@ export function useWebSocket(url: string | null, options: UseWebSocketOptions = 
     onOpen,
     onClose,
     onError,
-    reconnectAttempts = 3,
+    reconnectAttempts = 10,
     reconnectInterval = 1000,
   } = options
 
@@ -46,10 +46,15 @@ export function useWebSocket(url: string | null, options: UseWebSocketOptions = 
         setIsConnected(false)
         onClose?.()
 
-        // Attempt reconnection
+        // Attempt reconnection with exponential backoff
         if (reconnectCountRef.current < reconnectAttempts) {
+          const attempt = reconnectCountRef.current
           reconnectCountRef.current++
-          setTimeout(connect, reconnectInterval)
+          // Exponential backoff: base × 2^attempt, capped at 30s, with 20% jitter
+          const baseDelay = reconnectInterval * Math.pow(2, attempt)
+          const capped = Math.min(baseDelay, 30000)
+          const jitter = capped * (0.8 + Math.random() * 0.4)
+          setTimeout(connect, jitter)
         }
       }
 

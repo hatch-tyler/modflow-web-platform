@@ -6,6 +6,7 @@ unified cache service. Includes graceful degradation when Redis is unavailable.
 
 import json
 import logging
+import time
 from typing import Optional
 
 from app.services.redis_manager import get_sync_cache_client
@@ -17,31 +18,47 @@ SLICE_KEY_PREFIX = "slice:"
 # TTL for cached slices (1 hour)
 SLICE_TTL = 3600
 
-# Availability status cache
+# Availability status cache with time-based re-checking
 _redis_available: Optional[bool] = None
+_redis_last_check: float = 0.0
+_REDIS_RECHECK_INTERVAL = 30.0  # seconds
 
 
 def _is_redis_available() -> bool:
-    """Check if Redis is available."""
-    global _redis_available
-    if _redis_available is not None:
-        return _redis_available
+    """Check if Redis is available, with time-based re-checking.
+
+    When Redis was previously available (True), trust the cached value
+    (exception handlers call _reset_redis_status on failure).
+    When unavailable (False) or unknown (None), re-check at most every
+    _REDIS_RECHECK_INTERVAL seconds to allow recovery from transient errors.
+    """
+    global _redis_available, _redis_last_check
+
+    if _redis_available is True:
+        return True
+
+    now = time.monotonic()
+    if _redis_available is False and (now - _redis_last_check) < _REDIS_RECHECK_INTERVAL:
+        return False
 
     try:
         client = get_sync_cache_client()
         client.ping()
         _redis_available = True
+        _redis_last_check = now
         return True
     except Exception as e:
         logger.debug(f"Redis not available: {e}")
         _redis_available = False
+        _redis_last_check = now
     return False
 
 
 def _reset_redis_status() -> None:
-    """Reset Redis availability status to force re-check."""
-    global _redis_available
+    """Reset Redis availability status to force immediate re-check."""
+    global _redis_available, _redis_last_check
     _redis_available = None
+    _redis_last_check = 0.0
 
 
 def get_slice_cache_key(project_id: str, run_id: str, layer: int, kper: int, kstp: int) -> str:

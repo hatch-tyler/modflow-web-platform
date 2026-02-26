@@ -140,7 +140,9 @@ class TestCacheServiceRedisOperations:
 
     def test_graceful_degradation_when_redis_unavailable(self, cache_service):
         """Test that operations fail gracefully when Redis is unavailable."""
+        import time
         cache_service._redis_available = False
+        cache_service._redis_last_check = time.monotonic()  # recent check, skip re-check
 
         # All operations should return failure indicators
         assert cache_service.get_redis(CacheType.SLICE, "p", "r") is None

@@ -16,6 +16,9 @@ from typing import Any, Optional
 
 from app.config import get_settings
 
+# How often to re-check Redis when it was previously unavailable (seconds)
+_REDIS_RECHECK_INTERVAL = 30.0
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +56,7 @@ class CacheService:
     def __init__(self):
         self._redis = None
         self._redis_available = None  # None = unknown, True/False = tested
+        self._redis_last_check: float = 0.0
         self._storage = None
 
     @property
@@ -72,22 +76,35 @@ class CacheService:
         return self._storage
 
     def _is_redis_available(self) -> bool:
-        """Check if Redis is available, with caching of result."""
-        if self._redis_available is not None:
-            return self._redis_available
+        """Check if Redis is available, with time-based re-checking.
+
+        When Redis was previously available (True), trust the cached value
+        (exception handlers call _reset_redis_status on failure).
+        When unavailable (False) or unknown (None), re-check at most every
+        _REDIS_RECHECK_INTERVAL seconds to allow recovery from transient errors.
+        """
+        if self._redis_available is True:
+            return True
+
+        now = time.monotonic()
+        if self._redis_available is False and (now - self._redis_last_check) < _REDIS_RECHECK_INTERVAL:
+            return False
 
         try:
             self.redis.ping()
             self._redis_available = True
+            self._redis_last_check = now
             return True
         except Exception as e:
             logger.warning(f"Redis not available: {e}")
             self._redis_available = False
+            self._redis_last_check = now
             return False
 
     def _reset_redis_status(self) -> None:
-        """Reset Redis availability status to force re-check."""
+        """Reset Redis availability status to force immediate re-check."""
         self._redis_available = None
+        self._redis_last_check = 0.0
 
     # ─── Key Generation ─────────────────────────────────────────────────
 
