@@ -57,11 +57,15 @@ def check_api() -> bool:
                 with open(f"/proc/{pid}/cmdline", "r") as f:
                     cmdline = f.read().replace("\0", " ").strip()
 
-                # Only consider python/uvicorn processes
-                if "python" not in cmdline and "uvicorn" not in cmdline:
+                # Only consider python/uvicorn processes — check the executable
+                # (first token), not just args, to avoid counting tini/docker-init
+                # whose cmdline includes "uvicorn" as a passthrough argument.
+                exe = cmdline.split()[0] if cmdline else ""
+                if "python" not in exe and "uvicorn" not in exe:
                     continue
-                # Skip our own healthcheck process
-                if "healthcheck" in cmdline:
+                # Skip our own healthcheck process and the multiprocessing
+                # resource_tracker (bookkeeping helper, not an HTTP worker).
+                if "healthcheck" in cmdline or "resource_tracker" in cmdline:
                     continue
 
                 if state == "Z":
