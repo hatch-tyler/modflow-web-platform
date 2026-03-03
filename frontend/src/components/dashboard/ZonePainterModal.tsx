@@ -4,9 +4,9 @@ import DeckGL from '@deck.gl/react'
 import { PolygonLayer, PathLayer } from '@deck.gl/layers'
 import { OrthographicView } from '@deck.gl/core'
 import { Map } from 'react-map-gl/maplibre'
-import { Loader2, X, MousePointer2, Square, Pentagon, Plus, Minus, AlertTriangle, Save, FolderOpen, Zap, Calculator } from 'lucide-react'
+import { Loader2, X, MousePointer2, Square, Pentagon, Plus, Minus, AlertTriangle, Save, FolderOpen, Zap, Calculator, Download, Upload } from 'lucide-react'
 import { resultsApi, zoneBudgetApi, zoneDefinitionsApi } from '../../services/api'
-import type { ResultsSummary, ZoneBudgetProgress } from '../../types'
+import type { ResultsSummary, ZoneBudgetProgress, ZoneImportResponse } from '../../types'
 import { MAX_ZONES, zoneColor, type LayerZoneAssignments } from '../../utils/zoneColors'
 import { pointInPolygon } from '../../utils/pointInPolygon'
 import { getProjection } from '../../utils/projection'
@@ -104,6 +104,17 @@ export default function ZonePainterModal({
   const [showLoadDropdown, setShowLoadDropdown] = useState(false)
   const queryClient = useQueryClient()
 
+  // Export/import state
+  const [showExportDropdown, setShowExportDropdown] = useState(false)
+  const [showImportDropdown, setShowImportDropdown] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [showFieldSelector, setShowFieldSelector] = useState(false)
+  const [availableFields, setAvailableFields] = useState<string[]>([])
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [pendingImportType, setPendingImportType] = useState<'geojson' | 'shapefile' | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Keep activeZone within numZones
   useEffect(() => {
     if (activeZone > numZones) setActiveZone(numZones)
@@ -111,11 +122,18 @@ export default function ZonePainterModal({
 
   const currentLayerZones = zoneAssignments[layer] || {}
 
-  // Close on Escape
+  // Close on Escape, close dropdowns on outside click
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (polygonVertices.length > 0) {
+        if (showFieldSelector) {
+          setShowFieldSelector(false)
+          setPendingImportFile(null)
+          setPendingImportType(null)
+        } else if (showExportDropdown || showImportDropdown) {
+          setShowExportDropdown(false)
+          setShowImportDropdown(false)
+        } else if (polygonVertices.length > 0) {
           setPolygonVertices([])
           setLastVertexPixel(null)
         } else if (rectStart) {
@@ -127,7 +145,7 @@ export default function ZonePainterModal({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose, polygonVertices.length, rectStart])
+  }, [onClose, polygonVertices.length, rectStart, showExportDropdown, showImportDropdown, showFieldSelector])
 
   // Fetch head slice
   const { data: headSlice, isLoading: headLoading, isError: headError, refetch: refetchHeads } = useQuery({
@@ -444,6 +462,123 @@ export default function ZonePainterModal({
     } catch (err) {
       console.error('Failed to load zone definition:', err)
     }
+  }
+
+  // Export handler
+  const handleExport = async (format: 'geojson' | 'shapefile' | 'zonefile' | 'json') => {
+    setShowExportDropdown(false)
+    const zoneLayers = buildZoneLayers()
+    if (Object.keys(zoneLayers).length === 0) return
+    const zoneDef = { name: 'export', zone_layers: zoneLayers, num_zones: numZones }
+    try {
+      if (format === 'geojson') await zoneDefinitionsApi.exportGeoJson(projectId, zoneDef)
+      else if (format === 'shapefile') await zoneDefinitionsApi.exportShapefile(projectId, zoneDef)
+      else if (format === 'zonefile') await zoneDefinitionsApi.exportZoneFile(projectId, zoneDef)
+      else if (format === 'json') await zoneDefinitionsApi.exportJson(projectId, zoneDef)
+    } catch (err) {
+      console.error('Export failed:', err)
+    }
+  }
+
+  // Import handler
+  const triggerFileInput = (format: 'geojson' | 'shapefile' | 'zonefile' | 'json') => {
+    setShowImportDropdown(false)
+    setImportError(null)
+    const input = fileInputRef.current
+    if (!input) return
+    if (format === 'geojson') input.accept = '.geojson,.json'
+    else if (format === 'shapefile') input.accept = '.shp,.zip'
+    else if (format === 'zonefile') input.accept = '.zon,.zone,.dat,.txt'
+    else if (format === 'json') input.accept = '.json'
+    input.dataset.format = format
+    input.click()
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const format = (e.target.dataset.format || 'json') as string
+    e.target.value = '' // Reset for re-selection
+    if (!file) return
+
+    setImporting(true)
+    setImportError(null)
+    try {
+      let response: ZoneImportResponse
+      if (format === 'geojson') {
+        response = await zoneDefinitionsApi.importGeoJson(projectId, file)
+      } else if (format === 'shapefile') {
+        response = await zoneDefinitionsApi.importShapefile(projectId, file)
+      } else if (format === 'zonefile') {
+        response = await zoneDefinitionsApi.importZoneFile(projectId, file)
+      } else {
+        response = await zoneDefinitionsApi.importJson(projectId, file)
+      }
+      applyImportResponse(response)
+    } catch (err: any) {
+      // Check for 422 with available_fields (zone field auto-detect failed)
+      if (err?.response?.status === 422 && (format === 'geojson' || format === 'shapefile')) {
+        const fieldsHeader = err.response.headers?.['x-available-fields']
+        if (fieldsHeader) {
+          try {
+            const fields = JSON.parse(fieldsHeader)
+            setAvailableFields(fields)
+            setPendingImportFile(file)
+            setPendingImportType(format as 'geojson' | 'shapefile')
+            setShowFieldSelector(true)
+            setImporting(false)
+            return
+          } catch { /* fall through */ }
+        }
+        setImportError(err.response.data?.detail || 'Could not detect zone field')
+      } else {
+        setImportError(err?.response?.data?.detail || err?.message || 'Import failed')
+      }
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleFieldSelect = async (field: string) => {
+    setShowFieldSelector(false)
+    if (!pendingImportFile || !pendingImportType) return
+    setImporting(true)
+    setImportError(null)
+    try {
+      let response: ZoneImportResponse
+      if (pendingImportType === 'geojson') {
+        response = await zoneDefinitionsApi.importGeoJson(projectId, pendingImportFile, undefined, field)
+      } else {
+        response = await zoneDefinitionsApi.importShapefile(projectId, pendingImportFile, undefined, field)
+      }
+      applyImportResponse(response)
+    } catch (err: any) {
+      setImportError(err?.response?.data?.detail || err?.message || 'Import failed')
+    } finally {
+      setImporting(false)
+      setPendingImportFile(null)
+      setPendingImportType(null)
+    }
+  }
+
+  const applyImportResponse = (response: ZoneImportResponse) => {
+    // Convert API format to LayerZoneAssignments
+    const loaded: LayerZoneAssignments = {}
+    for (const [layStr, zones] of Object.entries(response.zone_layers)) {
+      const layerMap: Record<number, number> = {}
+      for (const [zoneName, cellIndices] of Object.entries(zones)) {
+        const zoneNum = parseInt(zoneName.replace('Zone ', ''), 10)
+        if (!isNaN(zoneNum)) {
+          for (const ci of cellIndices) {
+            layerMap[ci] = zoneNum
+          }
+        }
+      }
+      loaded[Number(layStr)] = layerMap
+    }
+    onZoneAssignmentsChange(loaded)
+    if (response.num_zones) setNumZones(Math.max(response.num_zones, 2))
+    refetchDefs()
+    queryClient.invalidateQueries({ queryKey: ['zone-definitions', projectId] })
   }
 
   // Controller config per tool
@@ -815,6 +950,52 @@ export default function ZonePainterModal({
                   </div>
                 )}
               </div>
+
+              {/* Export / Import */}
+              <div className="w-px h-4 bg-slate-300" />
+              <div className="relative">
+                <button
+                  onClick={() => { setShowExportDropdown(!showExportDropdown); setShowImportDropdown(false) }}
+                  disabled={totalAssignedAll === 0}
+                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-1.5 py-0.5 border border-slate-300 rounded disabled:opacity-30"
+                  title="Export zones"
+                >
+                  <Download className="h-3 w-3" />
+                  Export
+                </button>
+                {showExportDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
+                    <button onClick={() => handleExport('geojson')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">GeoJSON (.geojson)</button>
+                    <button onClick={() => handleExport('shapefile')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">Shapefile (.zip)</button>
+                    {!isPolygonGrid && (
+                      <button onClick={() => handleExport('zonefile')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">Zone File (.zon)</button>
+                    )}
+                    <button onClick={() => handleExport('json')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">JSON (.json)</button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => { setShowImportDropdown(!showImportDropdown); setShowExportDropdown(false) }}
+                  disabled={importing}
+                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 px-1.5 py-0.5 border border-slate-300 rounded disabled:opacity-30"
+                  title="Import zones"
+                >
+                  {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                  Import
+                </button>
+                {showImportDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
+                    <button onClick={() => triggerFileInput('geojson')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">GeoJSON (.geojson)</button>
+                    <button onClick={() => triggerFileInput('shapefile')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">Shapefile (.shp, .zip)</button>
+                    {!isPolygonGrid && (
+                      <button onClick={() => triggerFileInput('zonefile')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">Zone File (.zon)</button>
+                    )}
+                    <button onClick={() => triggerFileInput('json')} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 text-slate-700">JSON (.json)</button>
+                  </div>
+                )}
+              </div>
+              <input ref={fileInputRef} type="file" className="hidden" onChange={handleImportFile} />
             </div>
           </div>
 
@@ -996,6 +1177,42 @@ export default function ZonePainterModal({
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {/* Import error */}
+        {importError && (
+          <div className="px-4 py-2 border-t border-amber-100 bg-amber-50 flex items-center gap-2 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+            <span className="text-amber-700">{importError}</span>
+            <button onClick={() => setImportError(null)} className="ml-auto text-amber-500 hover:text-amber-700">&times;</button>
+          </div>
+        )}
+
+        {/* Field selector modal (for GeoJSON import) */}
+        {showFieldSelector && (
+          <div className="absolute inset-0 bg-black/30 z-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-xl p-4 min-w-[240px] max-w-[320px]">
+              <h3 className="text-sm font-semibold text-slate-800 mb-2">Select Zone Field</h3>
+              <p className="text-xs text-slate-500 mb-3">Which property identifies the zone?</p>
+              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                {availableFields.map(f => (
+                  <button
+                    key={f}
+                    onClick={() => handleFieldSelect(f)}
+                    className="text-left px-3 py-1.5 text-xs hover:bg-blue-50 rounded text-slate-700 border border-slate-200"
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setShowFieldSelector(false); setPendingImportFile(null); setPendingImportType(null) }}
+                className="mt-3 w-full text-xs text-slate-500 hover:text-slate-700 py-1 border border-slate-200 rounded"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 

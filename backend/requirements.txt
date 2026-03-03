@@ -25,6 +25,10 @@ flopy==3.9.5
 numpy==1.26.3
 pandas==2.2.0
 
+# GIS (zone import/export)
+geopandas>=1.0
+shapely>=2.0
+
 # Rate limiting
 slowapi==0.1.9
 

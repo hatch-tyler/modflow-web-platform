@@ -270,10 +270,72 @@ def process_upload_sync(
                             content_type="application/json",
                         )
 
+                    # Auto-detect zone files (.zon, .zone) for structured grids
+                    detected_zones = []
+                    try:
+                        from app.services.zone_io import parse_modflow_zone_file
+                        # Only attempt for structured grids
+                        zone_files = [
+                            f for f in extracted_files
+                            if f.lower().endswith(('.zon', '.zone'))
+                        ]
+                        if zone_files:
+                            # Need grid dims from validation_result
+                            zn_nlay = getattr(validation_result, 'nlay', 0) or 0
+                            zn_nrow = getattr(validation_result, 'nrow', 0) or 0
+                            zn_ncol = getattr(validation_result, 'ncol', 0) or 0
+                            zn_grid_type = getattr(validation_result, 'grid_type', 'structured')
+
+                            if zn_grid_type == 'structured' and zn_nrow > 0 and zn_ncol > 0:
+                                for zf in zone_files:
+                                    zf_path = extracted_path / zf
+                                    if not zf_path.exists():
+                                        continue
+                                    try:
+                                        zone_content = zf_path.read_text(errors='replace')
+                                        zone_layers, num_zones = parse_modflow_zone_file(
+                                            zone_content,
+                                            nlay=zn_nlay or 1,
+                                            nrow=zn_nrow,
+                                            ncol=zn_ncol,
+                                        )
+                                        if zone_layers:
+                                            zf_stem = Path(zf).stem
+                                            zone_def = {
+                                                "name": zf_stem,
+                                                "zone_layers": zone_layers,
+                                                "num_zones": num_zones,
+                                            }
+                                            # Save as zone definition
+                                            storage.upload_bytes(
+                                                settings.minio_bucket_models,
+                                                f"{storage_path}/zone_definitions/{zf_stem}.json",
+                                                json.dumps(zone_def).encode("utf-8"),
+                                                content_type="application/json",
+                                            )
+                                            detected_zones.append({
+                                                "file_path": zf,
+                                                "name": zf_stem,
+                                                "num_zones": num_zones,
+                                            })
+                                    except Exception as ze:
+                                        logger.debug("Zone file %s parse failed: %s", zf, ze)
+                    except Exception as ze:
+                        logger.debug("Zone file auto-detection skipped: %s", ze)
+
+                    if detected_zones:
+                        storage.upload_bytes(
+                            settings.minio_bucket_models,
+                            f"projects/{project_id}/detected_zones.json",
+                            json.dumps(detected_zones).encode("utf-8"),
+                            content_type="application/json",
+                        )
+
+                    n_detected = len(obs_files) + len(detected_zones)
                     update_upload_status(
                         job_id,
                         progress=100,
-                        message=f"All caches generated, {len(obs_files)} observation files detected",
+                        message=f"All caches generated, {n_detected} supplementary files detected",
                     )
                 except Exception as e:
                     update_upload_status(

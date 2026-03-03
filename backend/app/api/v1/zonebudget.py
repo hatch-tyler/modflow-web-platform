@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from uuid import UUID
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1134,3 +1134,515 @@ async def get_zone_definition(
                             detail=f"Zone definition '{name}' not found")
 
     return data
+
+
+# ---------------------------------------------------------------------------
+# Zone definition export endpoints
+# ---------------------------------------------------------------------------
+
+def _load_grid_geometry(project: Project) -> dict | None:
+    """Load cached grid_geometry.json from MinIO for polygon grids."""
+    storage = get_storage_service()
+    geom_path = f"projects/{project.id}/cache/grid_geometry.json"
+    try:
+        if storage.object_exists(settings.minio_bucket_models, geom_path):
+            return json.loads(storage.download_file(settings.minio_bucket_models, geom_path))
+    except Exception:
+        pass
+    return None
+
+
+@zone_def_router.post("/zone-definitions/export/geojson")
+async def export_zone_geojson(
+    project_id: UUID,
+    request: ZoneDefinitionSave,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export zone definition as GeoJSON file."""
+    from io import BytesIO
+    from starlette.responses import StreamingResponse
+    from app.services.zone_io import zone_layers_to_geodataframe
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    grid_type = project.grid_type or "structured"
+    grid_geometry = None
+    if grid_type in ("unstructured", "vertex"):
+        grid_geometry = _load_grid_geometry(project)
+        if not grid_geometry:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Grid geometry cache not found. Run a simulation first.")
+
+    gdf = zone_layers_to_geodataframe(
+        request.zone_layers,
+        nrow=project.nrow or 0,
+        ncol=project.ncol or 0,
+        nlay=project.nlay or 1,
+        delr=project.delr,
+        delc=project.delc,
+        xoff=project.xoff or 0.0,
+        yoff=project.yoff or 0.0,
+        angrot=project.angrot or 0.0,
+        epsg=project.epsg,
+        grid_type=grid_type,
+        grid_geometry=grid_geometry,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_path = Path(tmpdir) / "zones.geojson"
+        gdf.to_file(str(out_path), driver="GeoJSON")
+        content = out_path.read_bytes()
+
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/geo+json",
+        headers={"Content-Disposition": 'attachment; filename="zones.geojson"'},
+    )
+
+
+@zone_def_router.post("/zone-definitions/export/shapefile")
+async def export_zone_shapefile(
+    project_id: UUID,
+    request: ZoneDefinitionSave,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export zone definition as zipped Shapefile."""
+    import shutil
+    from io import BytesIO
+    from starlette.responses import StreamingResponse
+    from app.services.zone_io import zone_layers_to_geodataframe
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    grid_type = project.grid_type or "structured"
+    grid_geometry = None
+    if grid_type in ("unstructured", "vertex"):
+        grid_geometry = _load_grid_geometry(project)
+        if not grid_geometry:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Grid geometry cache not found. Run a simulation first.")
+
+    gdf = zone_layers_to_geodataframe(
+        request.zone_layers,
+        nrow=project.nrow or 0,
+        ncol=project.ncol or 0,
+        nlay=project.nlay or 1,
+        delr=project.delr,
+        delc=project.delc,
+        xoff=project.xoff or 0.0,
+        yoff=project.yoff or 0.0,
+        angrot=project.angrot or 0.0,
+        epsg=project.epsg,
+        grid_type=grid_type,
+        grid_geometry=grid_geometry,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_dir = Path(tmpdir) / "zones"
+        shp_dir.mkdir()
+        gdf.to_file(str(shp_dir / "zones.shp"), driver="ESRI Shapefile")
+        zip_path = Path(tmpdir) / "zones"
+        shutil.make_archive(str(zip_path), "zip", str(shp_dir))
+        content = (Path(tmpdir) / "zones.zip").read_bytes()
+
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="zones.zip"'},
+    )
+
+
+@zone_def_router.post("/zone-definitions/export/zonefile")
+async def export_zone_file(
+    project_id: UUID,
+    request: ZoneDefinitionSave,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export zone definition as MODFLOW zone file (structured grids only)."""
+    from io import BytesIO
+    from starlette.responses import StreamingResponse
+    from app.services.zone_io import zone_layers_to_modflow_zone_file
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    grid_type = project.grid_type or "structured"
+    if grid_type in ("unstructured", "vertex"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Zone file export is only supported for structured grids")
+
+    content = zone_layers_to_modflow_zone_file(
+        request.zone_layers,
+        nlay=project.nlay or 1,
+        nrow=project.nrow or 0,
+        ncol=project.ncol or 0,
+    )
+
+    return StreamingResponse(
+        BytesIO(content.encode("utf-8")),
+        media_type="text/plain",
+        headers={"Content-Disposition": 'attachment; filename="zones.zon"'},
+    )
+
+
+@zone_def_router.post("/zone-definitions/export/json")
+async def export_zone_json(
+    project_id: UUID,
+    request: ZoneDefinitionSave,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export zone definition as JSON file."""
+    from io import BytesIO
+    from starlette.responses import StreamingResponse
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    payload = {
+        "name": request.name,
+        "zone_layers": request.zone_layers,
+        "num_zones": request.num_zones,
+    }
+    content = json.dumps(payload, indent=2).encode("utf-8")
+
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="zones.json"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Zone definition import endpoints
+# ---------------------------------------------------------------------------
+
+@zone_def_router.post("/zone-definitions/import/geojson")
+async def import_zone_geojson(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    name: Optional[str] = None,
+    zone_field: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Import zone definition from GeoJSON file."""
+    from app.services.zone_io import geojson_to_zone_layers
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    content = await file.read()
+    try:
+        geojson_data = json.loads(content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Invalid JSON in uploaded file")
+
+    grid_type = project.grid_type or "structured"
+    grid_geometry = None
+    if grid_type in ("unstructured", "vertex"):
+        grid_geometry = _load_grid_geometry(project)
+        if not grid_geometry:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Grid geometry cache not found")
+
+    try:
+        zone_layers, num_zones = geojson_to_zone_layers(
+            geojson_data,
+            nrow=project.nrow or 0,
+            ncol=project.ncol or 0,
+            nlay=project.nlay or 1,
+            delr=project.delr,
+            delc=project.delc,
+            xoff=project.xoff or 0.0,
+            yoff=project.yoff or 0.0,
+            angrot=project.angrot or 0.0,
+            grid_type=grid_type,
+            grid_geometry=grid_geometry,
+            zone_field=zone_field,
+        )
+    except ValueError as e:
+        # Check if it's the "available_fields" error
+        try:
+            err_data = json.loads(str(e))
+            if "available_fields" in err_data:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=err_data["detail"],
+                    headers={"X-Available-Fields": json.dumps(err_data["available_fields"])},
+                )
+        except (json.JSONDecodeError, TypeError):
+            pass
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    def_name = name or (file.filename.rsplit(".", 1)[0] if file.filename else "imported")
+
+    # Save to MinIO
+    _save_imported_zone_def(project, def_name, zone_layers, num_zones)
+
+    return {
+        "name": def_name,
+        "zone_layers": zone_layers,
+        "num_zones": num_zones,
+        "saved": True,
+    }
+
+
+@zone_def_router.post("/zone-definitions/import/shapefile")
+async def import_zone_shapefile(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    name: Optional[str] = None,
+    zone_field: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Import zone definition from Shapefile (.shp or .zip)."""
+    from app.services.zone_io import geojson_to_zone_layers
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    content = await file.read()
+
+    # Write to temp and read with geopandas
+    try:
+        import geopandas as gpd
+    except ImportError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="geopandas not installed on server")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fname = file.filename or "upload.zip"
+        upload_path = Path(tmpdir) / fname
+        upload_path.write_bytes(content)
+
+        # If it's a zip, extract it
+        if fname.lower().endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(upload_path, "r") as zf:
+                zf.extractall(Path(tmpdir) / "extracted")
+            # Find .shp inside
+            shp_files = list((Path(tmpdir) / "extracted").rglob("*.shp"))
+            if not shp_files:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="No .shp file found in uploaded ZIP")
+            read_path = str(shp_files[0])
+        else:
+            read_path = str(upload_path)
+
+        gdf = gpd.read_file(read_path)
+
+    # Convert GeoDataFrame to GeoJSON dict for reuse of overlay logic
+    geojson_data = json.loads(gdf.to_json())
+
+    grid_type = project.grid_type or "structured"
+    grid_geometry = None
+    if grid_type in ("unstructured", "vertex"):
+        grid_geometry = _load_grid_geometry(project)
+        if not grid_geometry:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Grid geometry cache not found")
+
+    try:
+        zone_layers, num_zones = geojson_to_zone_layers(
+            geojson_data,
+            nrow=project.nrow or 0,
+            ncol=project.ncol or 0,
+            nlay=project.nlay or 1,
+            delr=project.delr,
+            delc=project.delc,
+            xoff=project.xoff or 0.0,
+            yoff=project.yoff or 0.0,
+            angrot=project.angrot or 0.0,
+            grid_type=grid_type,
+            grid_geometry=grid_geometry,
+            zone_field=zone_field,
+        )
+    except ValueError as e:
+        try:
+            err_data = json.loads(str(e))
+            if "available_fields" in err_data:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=err_data["detail"],
+                    headers={"X-Available-Fields": json.dumps(err_data["available_fields"])},
+                )
+        except (json.JSONDecodeError, TypeError):
+            pass
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    def_name = name or (file.filename.rsplit(".", 1)[0] if file.filename else "imported")
+    _save_imported_zone_def(project, def_name, zone_layers, num_zones)
+
+    return {
+        "name": def_name,
+        "zone_layers": zone_layers,
+        "num_zones": num_zones,
+        "saved": True,
+    }
+
+
+@zone_def_router.post("/zone-definitions/import/zonefile")
+async def import_zone_file(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    name: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Import zone definition from MODFLOW zone file (structured grids only)."""
+    from app.services.zone_io import parse_modflow_zone_file
+
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    grid_type = project.grid_type or "structured"
+    if grid_type in ("unstructured", "vertex"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Zone file import is only supported for structured grids")
+
+    content = (await file.read()).decode("utf-8", errors="replace")
+
+    try:
+        zone_layers, num_zones = parse_modflow_zone_file(
+            content,
+            nlay=project.nlay or 1,
+            nrow=project.nrow or 0,
+            ncol=project.ncol or 0,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Failed to parse zone file: {e}")
+
+    def_name = name or (file.filename.rsplit(".", 1)[0] if file.filename else "imported")
+    _save_imported_zone_def(project, def_name, zone_layers, num_zones)
+
+    return {
+        "name": def_name,
+        "zone_layers": zone_layers,
+        "num_zones": num_zones,
+        "saved": True,
+    }
+
+
+@zone_def_router.post("/zone-definitions/import/json")
+async def import_zone_json(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Import zone definition from JSON file."""
+    stmt = select(Project).where(Project.id == project_id)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Project {project_id} not found")
+
+    content = await file.read()
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Invalid JSON")
+
+    # Validate structure
+    zone_layers = data.get("zone_layers")
+    num_zones = data.get("num_zones", 0)
+    def_name = data.get("name", file.filename.rsplit(".", 1)[0] if file.filename else "imported")
+
+    if not zone_layers or not isinstance(zone_layers, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="JSON must contain 'zone_layers' object")
+
+    # Validate cell indices within grid bounds
+    total_cells = (project.nrow or 0) * (project.ncol or 0)
+    if total_cells == 0:
+        total_cells = project.ncol or 0  # USG models
+
+    for layer_str, layer_zones in zone_layers.items():
+        try:
+            lay = int(layer_str)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Invalid layer key: {layer_str}")
+        if lay < 0 or lay >= (project.nlay or 1):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Layer {lay} out of range (0-{(project.nlay or 1) - 1})")
+        if not isinstance(layer_zones, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Invalid zone data for layer {lay}")
+        for zone_name, cells in layer_zones.items():
+            if not isinstance(cells, list):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail=f"Invalid cell list for zone '{zone_name}' in layer {lay}")
+            for ci in cells:
+                if not isinstance(ci, int) or ci < 0 or ci >= total_cells:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                        detail=f"Cell index {ci} out of range for zone '{zone_name}' in layer {lay}")
+
+    _save_imported_zone_def(project, def_name, zone_layers, num_zones)
+
+    return {
+        "name": def_name,
+        "zone_layers": zone_layers,
+        "num_zones": num_zones,
+        "saved": True,
+    }
+
+
+def _save_imported_zone_def(
+    project: Project,
+    name: str,
+    zone_layers: dict,
+    num_zones: int,
+) -> None:
+    """Save an imported zone definition to MinIO."""
+    if not project.storage_path:
+        return
+
+    safe_name = re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')
+    if not safe_name:
+        safe_name = "imported"
+
+    storage = get_storage_service()
+    obj_path = f"{project.storage_path}/zone_definitions/{safe_name}.json"
+    payload = {
+        "name": name,
+        "zone_layers": zone_layers,
+        "num_zones": num_zones,
+    }
+    storage.upload_bytes(
+        settings.minio_bucket_models,
+        obj_path,
+        json.dumps(payload).encode("utf-8"),
+        content_type="application/json",
+    )

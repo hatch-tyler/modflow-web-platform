@@ -8,6 +8,7 @@ import type {
   PestConfig, PestResults, UploadStatus, AgentStatus,
   StructuredGridInfo,
   ZoneDefinitionSummary, ZoneDefinitionDetail, ZoneBudgetComputeResponse, ZoneBudgetProgress,
+  ZoneImportResponse,
   ConvergenceDetail, StressSummary, Refinement, BackupInfo,
   ParameterScanResponse, ParameterScanProgress,
 } from '../types'
@@ -331,6 +332,18 @@ export const visualizationApi = {
 }
 
 
+// Helper: trigger browser download from a blob
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // Zone Definitions (per project, persisted in MinIO)
 export const zoneDefinitionsApi = {
   list: (projectId: string) =>
@@ -344,6 +357,67 @@ export const zoneDefinitionsApi = {
 
   delete: (projectId: string, name: string) =>
     api.delete<{ name: string; deleted: boolean }>(`/projects/${projectId}/zone-definitions/${encodeURIComponent(name)}`).then(r => r.data),
+
+  // Export methods — POST zone_layers body, download blob
+  exportGeoJson: (projectId: string, zoneDef: { name: string; zone_layers: Record<string, Record<string, number[]>>; num_zones: number }) =>
+    api.post(`/projects/${projectId}/zone-definitions/export/geojson`, zoneDef, { responseType: 'blob' })
+      .then(r => { triggerDownload(r.data, 'zones.geojson'); }),
+
+  exportShapefile: (projectId: string, zoneDef: { name: string; zone_layers: Record<string, Record<string, number[]>>; num_zones: number }) =>
+    api.post(`/projects/${projectId}/zone-definitions/export/shapefile`, zoneDef, { responseType: 'blob' })
+      .then(r => { triggerDownload(r.data, 'zones.zip'); }),
+
+  exportZoneFile: (projectId: string, zoneDef: { name: string; zone_layers: Record<string, Record<string, number[]>>; num_zones: number }) =>
+    api.post(`/projects/${projectId}/zone-definitions/export/zonefile`, zoneDef, { responseType: 'blob' })
+      .then(r => { triggerDownload(r.data, 'zones.zon'); }),
+
+  exportJson: (projectId: string, zoneDef: { name: string; zone_layers: Record<string, Record<string, number[]>>; num_zones: number }) =>
+    api.post(`/projects/${projectId}/zone-definitions/export/json`, zoneDef, { responseType: 'blob' })
+      .then(r => { triggerDownload(r.data, 'zones.json'); }),
+
+  // Import methods — upload file via FormData
+  importGeoJson: (projectId: string, file: File, name?: string, zoneField?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const params: Record<string, string> = {}
+    if (name) params.name = name
+    if (zoneField) params.zone_field = zoneField
+    return api.post<ZoneImportResponse>(`/projects/${projectId}/zone-definitions/import/geojson`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params,
+    }).then(r => r.data)
+  },
+
+  importShapefile: (projectId: string, file: File, name?: string, zoneField?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const params: Record<string, string> = {}
+    if (name) params.name = name
+    if (zoneField) params.zone_field = zoneField
+    return api.post<ZoneImportResponse>(`/projects/${projectId}/zone-definitions/import/shapefile`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params,
+    }).then(r => r.data)
+  },
+
+  importZoneFile: (projectId: string, file: File, name?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const params: Record<string, string> = {}
+    if (name) params.name = name
+    return api.post<ZoneImportResponse>(`/projects/${projectId}/zone-definitions/import/zonefile`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params,
+    }).then(r => r.data)
+  },
+
+  importJson: (projectId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<ZoneImportResponse>(`/projects/${projectId}/zone-definitions/import/json`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
 }
 
 // Zone Budget (async compute via Celery)

@@ -605,3 +605,12 @@ export interface ParameterScanProgress {
   error?: string | null
   parameters?: PestParameter[]
 }
+
+// Zone import/export types
+export interface ZoneImportResponse {
+  name: string
+  zone_layers: Record<string, Record<string, number[]>>
+  num_zones: number
+  saved: boolean
+  available_fields?: string[]  // When GeoJSON auto-detect fails
+}
