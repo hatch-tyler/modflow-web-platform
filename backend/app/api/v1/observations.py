@@ -9,6 +9,7 @@ Supports multiple observation sets following pyEMU's add_observations pattern:
 import csv
 import io
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -16,6 +17,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -173,7 +176,7 @@ def _parse_with_mapping(
         if isinstance(col_spec, int):
             return col_spec
         idx = header_lower.index(col_spec.lower())
-        return int(row[idx])
+        return int(float(row[idx]))
 
     well_idx = get_col_idx(mapping.well_name)
     time_idx = get_col_idx(mapping.time if isinstance(mapping.time, str) else None)
@@ -184,8 +187,9 @@ def _parse_with_mapping(
 
     wells: dict[str, dict] = {}
     n_obs = 0
+    skipped_rows: list[tuple[int, str]] = []
 
-    for row_data in data_rows:
+    for row_idx, row_data in enumerate(data_rows):
         if not row_data or all(c.strip() == "" for c in row_data):
             continue
 
@@ -224,7 +228,17 @@ def _parse_with_mapping(
             n_obs += 1
 
         except (ValueError, IndexError) as e:
+            skipped_rows.append((row_idx + 2, str(e)))  # +2 for 1-based + header
             continue
+
+    # If all rows failed, raise a descriptive error instead of returning empty
+    if not wells and skipped_rows:
+        sample = skipped_rows[:3]
+        detail = "; ".join(f"row {r}: {e}" for r, e in sample)
+        raise ValueError(
+            f"All {len(skipped_rows)} data rows failed to parse. "
+            f"Check that column mapping matches CSV data. Examples: {detail}"
+        )
 
     return {"wells": wells, "n_observations": n_obs}, "long", list(wells.keys())
 
@@ -369,12 +383,15 @@ async def create_observation_set(
 
     content_bytes = await file.read()
     try:
-        content = content_bytes.decode("utf-8")
+        content = content_bytes.decode("utf-8-sig")  # Handle BOM from Excel
     except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be UTF-8 encoded CSV",
-        )
+        try:
+            content = content_bytes.decode("latin-1")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be UTF-8 encoded CSV",
+            )
 
     try:
         parsed, format_type, well_names = _parse_observation_csv(content)
@@ -534,7 +551,7 @@ async def update_observation_set(
         # Re-parse the CSV with new mapping
         csv_path = _set_data_path(project_id, set_id)
         if storage.object_exists(settings.minio_bucket_models, csv_path):
-            csv_content = storage.download_file(settings.minio_bucket_models, csv_path).decode("utf-8")
+            csv_content = storage.download_file(settings.minio_bucket_models, csv_path).decode("utf-8-sig")
             try:
                 parsed, format_type, well_names = _parse_observation_csv(
                     csv_content, update.column_mapping
@@ -654,24 +671,35 @@ async def mark_file_as_observation(
     # Download and parse the CSV
     content_bytes = storage.download_file(settings.minio_bucket_models, file_path)
     try:
-        content = content_bytes.decode("utf-8")
+        content = content_bytes.decode("utf-8-sig")  # Handle BOM from Excel
     except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be UTF-8 encoded CSV",
-        )
+        try:
+            content = content_bytes.decode("latin-1")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be UTF-8 encoded CSV",
+            )
 
     try:
+        logger.info(
+            "Parsing observation CSV: file=%s, mapping=%s, content_lines=%d",
+            request.file_path,
+            request.column_mapping.model_dump() if request.column_mapping else None,
+            content.count('\n'),
+        )
         parsed, format_type, well_names = _parse_observation_csv(
             content, request.column_mapping
         )
     except ValueError as e:
+        logger.warning("Observation CSV parse error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
 
     if not parsed["wells"]:
+        logger.warning("No valid observation data found in CSV: %s", request.file_path)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No valid observation data found in CSV with the provided column mapping",

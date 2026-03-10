@@ -105,22 +105,38 @@ class TestClassifyFile:
     """Tests for classify_file function."""
 
     @pytest.mark.parametrize("filepath,expected_category", [
-        # Model core files
-        ("mfsim.nam", "model_core"),
-        ("model.nam", "model_core"),
-        ("model.dis", "model_core"),
-        ("model.disu", "model_core"),
-        ("model.npf", "model_core"),
-        ("model.ims", "model_core"),
-        ("model.ic", "model_core"),
-        # Model input files
-        ("model.wel", "model_input"),
-        ("model.drn", "model_input"),
-        ("model.riv", "model_input"),
-        ("model.rch", "model_input"),
-        ("model.sfr", "model_input"),
-        ("data.txt", "model_input"),
-        ("array.arr", "model_input"),
+        # Model package files (formerly model_core + model_input packages)
+        ("mfsim.nam", "model_package"),
+        ("model.nam", "model_package"),
+        ("model.dis", "model_package"),
+        ("model.disu", "model_package"),
+        ("model.npf", "model_package"),
+        ("model.ims", "model_package"),
+        ("model.ic", "model_package"),
+        ("model.wel", "model_package"),
+        ("model.drn", "model_package"),
+        ("model.riv", "model_package"),
+        ("model.rch", "model_package"),
+        ("model.sfr", "model_package"),
+        ("model.chd", "model_package"),
+        ("model.ghb", "model_package"),
+        ("model.sto", "model_package"),
+        ("model.hfb", "model_package"),
+        ("model.maw", "model_package"),
+        ("model.rcha", "model_package"),
+        ("model.evta", "model_package"),
+        # MF6 numbered extensions
+        ("model.chd6", "model_package"),
+        ("model.wel6", "model_package"),
+        ("model.riv6", "model_package"),
+        ("model.drn6", "model_package"),
+        ("model.ghb6", "model_package"),
+        ("model.sfr6", "model_package"),
+        ("model.oc6", "model_package"),
+        ("model.obs6", "model_package"),
+        # External array files
+        ("array.arr", "model_array"),
+        ("hk_layer1.ref", "model_array"),
         # Model output files
         ("model.hds", "model_output"),
         ("model.cbc", "model_output"),
@@ -158,12 +174,24 @@ class TestClassifyFile:
         assert classify_file("field_data/measurements.csv") == "observation"
 
     def test_classify_file_with_required_files(self):
-        """Test that files in required_files set are classified as model_core."""
-        required = {"custom_data.dat", "special_array.ref"}
-        assert classify_file("custom_data.dat", required) == "model_core"
-        assert classify_file("special_array.ref", required) == "model_core"
-        # Files not in required set use normal classification
-        assert classify_file("other.dat", required) == "model_input"
+        """Test that files in required_files set are classified as model_package."""
+        required = {"custom_data.dat", "special.xyz"}
+        assert classify_file("custom_data.dat", required) == "model_package"
+        assert classify_file("special.xyz", required) == "model_package"
+
+    def test_classify_file_with_external_files(self):
+        """Test that files in external_files set are classified as model_array."""
+        external = {"arrays/hk_l1.dat", "rch_sp1.txt"}
+        assert classify_file("arrays/hk_l1.dat", external_files=external) == "model_array"
+        assert classify_file("rch_sp1.txt", external_files=external) == "model_array"
+        # Not in external set and no matching array pattern → other
+        assert classify_file("readme.md") == "other"
+
+    def test_classify_file_array_pattern_detection(self):
+        """Test that common array file patterns are detected as model_array."""
+        assert classify_file("hk_layer1.dat") == "model_array"
+        assert classify_file("rech1.dat") == "model_array"
+        assert classify_file("sy_layer3.txt") == "model_array"
 
     def test_classify_file_pest_patterns(self):
         """Test PEST-related filename patterns."""
@@ -181,7 +209,7 @@ class TestClassifyFiles:
         result = classify_files(files)
 
         expected_keys = {
-            'model_core', 'model_input', 'model_output',
+            'model_package', 'model_array', 'model_output',
             'pest', 'observation', 'blocked', 'other'
         }
         assert set(result.keys()) == expected_keys
@@ -199,24 +227,36 @@ class TestClassifyFiles:
         ]
         result = classify_files(files)
 
-        assert len(result["model_core"]) == 1
-        assert result["model_core"][0]["name"] == "model.nam"
-
-        assert len(result["model_input"]) == 1
-        assert result["model_input"][0]["name"] == "model.wel"
-
+        assert len(result["model_package"]) == 2  # .nam + .wel
         assert len(result["model_output"]) == 1
         assert len(result["pest"]) == 1
         assert len(result["observation"]) == 1
         assert len(result["blocked"]) == 1
         assert len(result["other"]) == 1
 
+    def test_classify_files_with_external_files(self):
+        """Test classification with external file references."""
+        files = ["model.npf", "arrays/hk.dat", "rch.txt", "readme.md"]
+        external = {"arrays/hk.dat", "rch.txt"}
+        pkg_map = {"arrays/hk.dat": "NPF", "rch.txt": "RCHA"}
+
+        result = classify_files(files, external_files=external, file_to_package=pkg_map)
+
+        assert len(result["model_package"]) == 1  # .npf
+        assert len(result["model_array"]) == 2  # hk.dat + rch.txt
+        assert len(result["other"]) == 1  # readme.md
+
+        # Check descriptions include package reference
+        array_descs = {f["name"]: f["description"] for f in result["model_array"]}
+        assert "NPF" in array_descs["hk.dat"]
+        assert "RCHA" in array_descs["rch.txt"]
+
     def test_classify_files_file_info_structure(self):
         """Test that file info contains expected fields."""
         files = ["model.nam"]
         result = classify_files(files)
 
-        file_info = result["model_core"][0]
+        file_info = result["model_package"][0]
         assert "path" in file_info
         assert "name" in file_info
         assert "extension" in file_info
@@ -230,7 +270,7 @@ class TestClassifyDirectory:
         """Test that directory classification includes file sizes."""
         # Create test files
         (tmp_path / "model.nam").write_text("NAME FILE")
-        (tmp_path / "data.txt").write_text("DATA")
+        (tmp_path / "array.arr").write_text("DATA")
 
         result = classify_directory(tmp_path)
 
@@ -258,6 +298,19 @@ class TestClassifyDirectory:
         assert "model.nam" in all_paths
         assert "nested/model.wel" in all_paths
 
+    def test_classify_directory_with_external_files(self, tmp_path: Path):
+        """Test directory classification with external file references."""
+        (tmp_path / "model.npf").write_text("NPF")
+        arrays_dir = tmp_path / "arrays"
+        arrays_dir.mkdir()
+        (arrays_dir / "hk.dat").write_text("1.0 2.0 3.0")
+
+        external = {"arrays/hk.dat"}
+        result = classify_directory(tmp_path, external_files=external)
+
+        array_files = [f["path"] for f in result["model_array"]]
+        assert "arrays/hk.dat" in array_files
+
 
 class TestDetectObservationCsv:
     """Tests for detect_observation_csv function."""
@@ -278,6 +331,21 @@ class TestDetectObservationCsv:
         assert result["n_observations"] == 2
         assert result["column_mapping"]["well_name"] == "wellname"
         assert result["column_mapping"]["time"] == "time"
+
+    def test_detect_long_format_disv_cellid(self, tmp_path: Path):
+        """Test detection of DISV-style CSV with CellID column."""
+        csv_file = tmp_path / "obs.csv"
+        csv_file.write_text(
+            "WellID,Layer,CellID,Time,Target\n"
+            "MW-01,1,42,1.0,45.2\n"
+            "MW-01,1,42,30.0,44.8\n"
+        )
+
+        result = detect_observation_csv(csv_file)
+
+        assert result is not None
+        assert result["format"] == "long"
+        assert result["n_observations"] == 2
 
     def test_detect_wide_format(self, tmp_path: Path):
         """Test detection of wide format observation CSV."""
@@ -333,6 +401,17 @@ class TestGetFileDescription:
         ("model.wel", ".wel", "Well package"),
         ("model.hds", ".hds", "Head output file"),
         ("pest.pst", ".pst", "PEST control file"),
+        # MF6 numbered extensions
+        ("model.chd6", ".chd6", "Constant head"),
+        ("model.wel6", ".wel6", "Well package"),
+        ("model.sfr6", ".sfr6", "Streamflow routing"),
+        ("model.oc6", ".oc6", "Output control"),
+        # Array files
+        ("data.arr", ".arr", "External array data"),
+        ("data.ref", ".ref", "External reference data"),
+        # Storage
+        ("model.sto", ".sto", "Storage package"),
+        # Unknown
         ("unknown.xyz", ".xyz", ""),
     ])
     def test_get_file_description(self, filename: str, extension: str, expected_desc: str):
@@ -347,8 +426,8 @@ class TestGetCategorizedSummary:
     def test_summary_structure(self):
         """Test summary contains expected fields."""
         categories = {
-            'model_core': [{'path': 'a.nam', 'size': 100}],
-            'model_input': [{'path': 'b.wel', 'size': 200}],
+            'model_package': [{'path': 'a.nam', 'size': 100}],
+            'model_array': [{'path': 'b.dat', 'size': 200}],
             'model_output': [],
             'pest': [],
             'observation': [],
@@ -366,8 +445,8 @@ class TestGetCategorizedSummary:
     def test_summary_counts(self):
         """Test summary counts files correctly."""
         categories = {
-            'model_core': [{'path': 'a.nam', 'size': 100}, {'path': 'b.dis', 'size': 200}],
-            'model_input': [{'path': 'c.wel', 'size': 300}],
+            'model_package': [{'path': 'a.nam', 'size': 100}, {'path': 'b.dis', 'size': 200}],
+            'model_array': [{'path': 'c.dat', 'size': 300}],
             'model_output': [],
             'pest': [],
             'observation': [],
@@ -379,15 +458,15 @@ class TestGetCategorizedSummary:
 
         assert summary["total_files"] == 3
         assert summary["total_size_bytes"] == 600
-        assert summary["categories"]["model_core"]["count"] == 2
-        assert summary["categories"]["model_core"]["size"] == 300
-        assert summary["categories"]["model_input"]["count"] == 1
+        assert summary["categories"]["model_package"]["count"] == 2
+        assert summary["categories"]["model_package"]["size"] == 300
+        assert summary["categories"]["model_array"]["count"] == 1
 
     def test_summary_empty_categories(self):
         """Test summary with all empty categories."""
         categories = {
-            'model_core': [],
-            'model_input': [],
+            'model_package': [],
+            'model_array': [],
             'model_output': [],
             'pest': [],
             'observation': [],

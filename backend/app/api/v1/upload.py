@@ -36,6 +36,7 @@ from app.services.grid_cache import (
 from app.services.modflow import extract_and_validate_zip, validate_model, find_model_directory
 from app.services.path_normalizer import (
     extract_zip_with_normalized_paths,
+    extract_external_references,
     normalize_all_model_files,
     normalize_path,
 )
@@ -233,7 +234,13 @@ def process_upload_sync(
 
                 # Classify files and store categorization
                 try:
-                    categories = classify_directory(extracted_path)
+                    # Extract external file references for smart array detection
+                    ext_files, ext_file_to_pkg = extract_external_references(extracted_path)
+                    categories = classify_directory(
+                        extracted_path,
+                        external_files=ext_files,
+                        file_to_package=ext_file_to_pkg,
+                    )
                     summary = get_categorized_summary(categories)
 
                     # Store categorization as JSON in MinIO
@@ -664,10 +671,35 @@ async def get_categorized_files(
             data = storage.download_file(settings.minio_bucket_models, categorization_path)
             cached = json.loads(data)
 
-            # Convert to response format
+            # Convert to response format, mapping old category names
             categories = {}
             for cat_name, files in cached.get("categories", {}).items():
-                categories[cat_name] = [
+                # Backward compat: map old category names to new
+                if cat_name == 'model_core':
+                    cat_name = 'model_package'
+                elif cat_name == 'model_input':
+                    # Split old model_input into model_package vs model_array
+                    from app.services.file_classifier import MODEL_ARRAY_EXTENSIONS
+                    array_like_extensions = MODEL_ARRAY_EXTENSIONS | {'.dat', '.txt'}
+                    for f in files:
+                        ext = f.get("extension", "")
+                        mapped_cat = 'model_array' if ext in array_like_extensions else 'model_package'
+                        if mapped_cat not in categories:
+                            categories[mapped_cat] = []
+                        categories[mapped_cat].append(
+                            FileInfo(
+                                path=f["path"],
+                                name=f["name"],
+                                extension=ext,
+                                description=f.get("description", ""),
+                                size=f.get("size", 0),
+                            )
+                        )
+                    continue
+
+                if cat_name not in categories:
+                    categories[cat_name] = []
+                categories[cat_name].extend([
                     FileInfo(
                         path=f["path"],
                         name=f["name"],
@@ -676,7 +708,7 @@ async def get_categorized_files(
                         size=f.get("size", 0),
                     )
                     for f in files
-                ]
+                ])
 
             summary = cached.get("summary", {})
 
@@ -793,7 +825,7 @@ async def delete_project_file(
     from app.services.file_classifier import classify_file
 
     category = classify_file(file_path)
-    is_core = category == "model_core"
+    is_core = category == "model_package"
 
     # Delete the file
     storage.delete_object(settings.minio_bucket_models, object_name)
@@ -806,7 +838,7 @@ async def delete_project_file(
         pass
 
     # Clear grid cache if model file deleted
-    if category in ("model_core", "model_input"):
+    if category in ("model_package", "model_array"):
         try:
             delete_grid_cache(str(project_id))
             delete_array_caches(str(project_id))
@@ -821,13 +853,13 @@ async def delete_project_file(
 
     if is_core:
         response["warning"] = (
-            "This was a core model file. "
+            "This was a model package file. "
             "The model may no longer be valid for simulation."
         )
-    elif category == "model_input":
+    elif category == "model_array":
         response["warning"] = (
-            "This was a model input file. "
-            "The model may fail if this file is referenced in the NAM file."
+            "This was an external data file. "
+            "The model may fail if this file is referenced by a package."
         )
 
     return response

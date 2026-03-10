@@ -286,7 +286,9 @@ export interface ObservationSetSelection {
 }
 
 // File categorization types
-export type FileCategory = 'model_core' | 'model_input' | 'model_output' | 'pest' | 'observation' | 'blocked' | 'other'
+export type FileCategory = 'model_package' | 'model_array' | 'model_output' | 'pest' | 'observation' | 'blocked' | 'other'
+  // Backward compat aliases (old cached data may use these)
+  | 'model_core' | 'model_input'
 
 export interface FileInfo {
   path: string

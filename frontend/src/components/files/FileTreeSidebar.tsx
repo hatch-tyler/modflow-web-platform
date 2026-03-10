@@ -14,24 +14,30 @@ interface FileTreeSidebarProps {
   width: number
 }
 
-const CATEGORY_LABELS: Record<FileCategory, string> = {
-  model_core: 'Core Files',
-  model_input: 'Input Packages',
+const CATEGORY_LABELS: Partial<Record<FileCategory, string>> = {
+  model_package: 'Model Files',
+  model_array: 'External Arrays & Data',
   model_output: 'Output Files',
   pest: 'PEST Files',
   observation: 'Observations',
   blocked: 'Blocked',
   other: 'Other',
+  // Backward compat
+  model_core: 'Core Files',
+  model_input: 'Input Packages',
 }
 
-const CATEGORY_ICONS: Record<FileCategory, React.ElementType> = {
-  model_core: Database,
-  model_input: FileCode,
+const CATEGORY_ICONS: Partial<Record<FileCategory, React.ElementType>> = {
+  model_package: Database,
+  model_array: FileCode,
   model_output: FolderOpen,
   pest: Settings,
   observation: FileText,
   blocked: FileText,
   other: FileText,
+  // Backward compat
+  model_core: Database,
+  model_input: FileCode,
 }
 
 function getFileIcon(ext: string): string {
@@ -53,7 +59,7 @@ export default function FileTreeSidebar({
 }: FileTreeSidebarProps) {
   const [searchFilter, setSearchFilter] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['model_core', 'model_input'])
+    new Set(['model_package', 'model_array', 'model_core', 'model_input'])
   )
 
   const { data: categorizedFiles, isLoading } = useQuery({
@@ -114,7 +120,7 @@ export default function FileTreeSidebar({
           </div>
         ) : (
           filteredCategories.map(({ category, files }) => {
-            const Icon = CATEGORY_ICONS[category]
+            const Icon = CATEGORY_ICONS[category] || FileText
             const isExpanded = expandedCategories.has(category)
 
             return (
@@ -129,7 +135,7 @@ export default function FileTreeSidebar({
                     <ChevronRight className="h-3.5 w-3.5 text-slate-400 mr-1" />
                   )}
                   <Icon className="h-3.5 w-3.5 text-slate-500 mr-1.5" />
-                  <span className="font-medium text-slate-600">{CATEGORY_LABELS[category]}</span>
+                  <span className="font-medium text-slate-600">{CATEGORY_LABELS[category] || category}</span>
                   <span className="ml-auto text-xs text-slate-400">{files.length}</span>
                 </button>
 

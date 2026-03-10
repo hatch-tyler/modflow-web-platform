@@ -266,6 +266,76 @@ def normalize_modflow_file_paths(file_path: Path) -> Tuple[bool, int]:
     return modified, replacements
 
 
+def extract_external_references(model_dir: Path) -> Tuple[Set[str], dict[str, str]]:
+    """
+    Extract externally-referenced file paths from MODFLOW input files.
+
+    Scans all model files for OPEN/CLOSE, DATA(BINARY), FILEIN, FILEOUT,
+    and INCLUDE directives to identify external data files.
+
+    Parameters
+    ----------
+    model_dir : Path
+        Directory containing MODFLOW model files
+
+    Returns
+    -------
+    tuple of (set of str, dict of str to str)
+        (set of relative paths to external files,
+         dict mapping each external file to the referencing package extension)
+    """
+    external_files: Set[str] = set()
+    file_to_package: dict[str, str] = {}
+
+    for file_path in model_dir.rglob('*'):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() not in PATH_REFERENCE_EXTENSIONS:
+            continue
+
+        # Determine the package name from the file extension
+        pkg_ext = file_path.suffix.lower().lstrip('.')
+        # Map numbered extensions to base package name
+        pkg_name = pkg_ext.rstrip('0123456789').upper()
+
+        try:
+            content = file_path.read_text(encoding='utf-8', errors='replace')
+        except Exception:
+            try:
+                content = file_path.read_text(encoding='latin-1')
+            except Exception:
+                continue
+
+        for line in content.split('\n'):
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+
+            for pattern in PATH_PATTERNS:
+                match = pattern.search(stripped)
+                if match:
+                    groups = match.groups()
+                    # The last group is typically the path
+                    ref_path_raw = groups[-1].strip().strip("'\"")
+                    if not ref_path_raw:
+                        continue
+
+                    # Normalize and resolve relative to the source file's directory
+                    ref_path = normalize_path(ref_path_raw)
+                    try:
+                        resolved = (file_path.parent / ref_path).resolve()
+                        if resolved.is_file():
+                            rel = str(resolved.relative_to(model_dir.resolve())).replace('\\', '/')
+                            external_files.add(rel)
+                            if rel not in file_to_package:
+                                file_to_package[rel] = pkg_name
+                    except (ValueError, OSError):
+                        # Path outside model_dir or invalid — skip
+                        pass
+
+    return external_files, file_to_package
+
+
 def normalize_all_model_files(model_dir: Path) -> Tuple[int, int]:
     """
     Normalize path references in all MODFLOW files in a directory.

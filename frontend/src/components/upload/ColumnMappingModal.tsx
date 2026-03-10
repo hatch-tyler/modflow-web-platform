@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, AlertCircle, Loader2, CheckCircle } from 'lucide-react'
-import { observationsApi, filesApi } from '../../services/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { X, AlertCircle, Loader2, CheckCircle, Info } from 'lucide-react'
+import { observationsApi, filesApi, projectsApi } from '../../services/api'
 import type { ColumnMapping } from '../../types'
 
 interface ColumnMappingModalProps {
@@ -28,6 +28,14 @@ export default function ColumnMappingModal({
   onSuccess,
 }: ColumnMappingModalProps) {
   const queryClient = useQueryClient()
+
+  // Query project to auto-detect grid type
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: !!projectId,
+  })
+
   const [setName, setSetName] = useState('')
   const [csvPreview, setCsvPreview] = useState<string[][]>([])
   const [headers, setHeaders] = useState<string[]>([])
@@ -45,6 +53,13 @@ export default function ColumnMappingModal({
   const [isLoadingPreview, setIsLoadingPreview] = useState(true)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [useNode, setUseNode] = useState(false)
+
+  // Auto-set node mode based on project grid type
+  useEffect(() => {
+    if (project?.grid_type === 'vertex' || project?.grid_type === 'unstructured') {
+      setUseNode(true)
+    }
+  }, [project])
 
   // Load CSV preview
   useEffect(() => {
@@ -78,9 +93,9 @@ export default function ColumnMappingModal({
           layer: ['layer', 'lay', 'k', 'lyr'],
           row: ['row', 'r', 'i', 'row_num', 'rownum'],
           col: ['col', 'column', 'c', 'j', 'col_num', 'colnum'],
-          node: ['node', 'nodeid', 'n', 'node_num', 'nodenum'],
+          node: ['node', 'nodeid', 'n', 'node_num', 'nodenum', 'cellid', 'cell_id', 'cell', 'cellnum'],
           time: ['time', 't', 'simtime', 'stress_period', 'sp', 'totim', 'datetime', 'date'],
-          value: ['head', 'value', 'obs', 'observed', 'waterlevel', 'level', 'simulated', 'measured', 'obs_value'],
+          value: ['head', 'value', 'obs', 'observed', 'waterlevel', 'level', 'simulated', 'measured', 'obs_value', 'target', 'gwl', 'water_level', 'wl', 'obs_val'],
         }
 
         for (const [field, aliases] of Object.entries(autoMappings)) {
@@ -231,6 +246,15 @@ export default function ColumnMappingModal({
                 </div>
               </div>
 
+              {/* DISV auto-detect banner */}
+              {(project?.grid_type === 'vertex' || project?.grid_type === 'unstructured') && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-blue-700 text-sm">
+                  <Info className="h-4 w-4 flex-shrink-0" />
+                  This project uses a {project.grid_type === 'vertex' ? 'vertex (DISV)' : 'unstructured (DISU)'} grid.
+                  Node-based location mapping has been selected automatically.
+                </div>
+              )}
+
               {/* Grid type toggle */}
               <div className="flex items-center gap-4">
                 <label className="text-sm font-medium text-slate-700">
@@ -353,9 +377,15 @@ export default function ColumnMappingModal({
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t bg-slate-50">
           {markMutation.isError && (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              {(markMutation.error as Error)?.message || 'Failed to create observation set'}
+            <div className="text-red-600 text-sm max-w-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span className="break-words">
+                  {(markMutation.error as any)?.response?.data?.detail
+                    || (markMutation.error as Error)?.message
+                    || 'Failed to create observation set'}
+                </span>
+              </div>
             </div>
           )}
           <div className="ml-auto flex items-center gap-3">
