@@ -1,18 +1,18 @@
 """File content read/write/backup API endpoints."""
 
-import json
-from datetime import datetime
+import re
+from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.base import get_db
-from app.models.project import Project
 from app.services.storage import get_storage_service
+from app.api.v1.dependencies import get_project_or_404
 
 router = APIRouter(
     prefix="/projects/{project_id}/files",
@@ -30,15 +30,26 @@ BINARY_EXTENSIONS = {
 }
 
 
-async def _get_project(project_id: str, db: AsyncSession) -> Project:
-    project = (
-        await db.execute(select(Project).where(Project.id == UUID(project_id)))
-    ).scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if not project.storage_path:
-        raise HTTPException(status_code=400, detail="Project has no model files")
-    return project
+def _validate_file_path(file_path: str) -> None:
+    """Validate file path against traversal attacks.
+
+    Uses PurePosixPath resolution to catch encoded traversal sequences,
+    and rejects absolute/UNC paths.
+    """
+    # Reject absolute paths (Unix and Windows UNC)
+    if file_path.startswith("/") or file_path.startswith("\\") or ":" in file_path:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    # Resolve and check for traversal (.. anywhere in resolved path)
+    resolved = PurePosixPath(file_path)
+    try:
+        # .resolve() on PurePosixPath doesn't touch filesystem but
+        # iterating parts catches ".." components
+        for part in resolved.parts:
+            if part == "..":
+                raise HTTPException(status_code=400, detail="Invalid file path")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid file path")
 
 
 @router.get("/{file_path:path}/content")
@@ -48,11 +59,10 @@ async def get_file_content(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the text content of a model file."""
-    project = await _get_project(project_id, db)
+    project = await get_project_or_404(UUID(project_id), db, require_storage=True)
 
     # Security: prevent path traversal
-    if ".." in file_path or file_path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid file path")
+    _validate_file_path(file_path)
 
     # Check for binary files
     ext = "." + file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
@@ -98,10 +108,9 @@ async def save_file_content(
     db: AsyncSession = Depends(get_db),
 ):
     """Save modified content to a model file, optionally creating a backup."""
-    project = await _get_project(project_id, db)
+    project = await get_project_or_404(UUID(project_id), db, require_storage=True)
 
-    if ".." in file_path or file_path.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid file path")
+    _validate_file_path(file_path)
 
     storage = get_storage_service()
     obj_path = f"{project.storage_path}/{file_path}"
@@ -111,7 +120,7 @@ async def save_file_content(
     if body.create_backup:
         try:
             existing = storage.download_file(settings.minio_bucket_models, obj_path)
-            backup_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            backup_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             backup_path = f"projects/{project_id}/file_backups/{file_path}.{backup_timestamp}"
             storage.upload_bytes(
                 settings.minio_bucket_models,
@@ -148,7 +157,7 @@ async def list_file_backups(
     db: AsyncSession = Depends(get_db),
 ):
     """List backup versions of a file."""
-    project = await _get_project(project_id, db)
+    project = await get_project_or_404(UUID(project_id), db, require_storage=True)
 
     storage = get_storage_service()
     backup_prefix = f"projects/{project_id}/file_backups/{file_path}."
@@ -182,7 +191,10 @@ async def list_file_backups(
 
 
 class RevertRequest(BaseModel):
-    backup_timestamp: str
+    backup_timestamp: str = Field(
+        ..., pattern=r"^\d{8}_\d{6}$",
+        description="Timestamp in YYYYMMDD_HHMMSS format",
+    )
 
 
 @router.post("/{file_path:path}/revert")
@@ -193,7 +205,7 @@ async def revert_file(
     db: AsyncSession = Depends(get_db),
 ):
     """Revert a file to a backup version."""
-    project = await _get_project(project_id, db)
+    project = await get_project_or_404(UUID(project_id), db, require_storage=True)
 
     storage = get_storage_service()
     backup_path = f"projects/{project_id}/file_backups/{file_path}.{body.backup_timestamp}"

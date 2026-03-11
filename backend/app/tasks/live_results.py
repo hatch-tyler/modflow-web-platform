@@ -79,8 +79,9 @@ def _run_live_processing(
 
     if not hds_path:
         # HDS file may not exist yet, wait and retry
-        for _ in range(30):  # Wait up to 5 minutes
-            time.sleep(10)
+        wait_polls = settings.live_results_wait_timeout // max(settings.live_results_poll_interval, 1)
+        for _ in range(wait_polls):
+            time.sleep(settings.live_results_poll_interval)
             for ext in hds_extensions:
                 candidates = list(model_path.glob(f"*{ext}"))
                 if candidates:
@@ -105,7 +106,7 @@ def _run_live_processing(
     processed_budget_timesteps = set()
     total_processed = 0
     last_check_time = 0
-    check_interval = 5  # seconds between checks
+    check_interval = settings.live_results_poll_interval
     global_min = None
     global_max = None
     live_budget_data = {"record_names": [], "periods": {}, "live": True}
@@ -221,7 +222,7 @@ def _run_live_processing(
                                 project_id, run_id,
                                 layer_idx, kper, kstp,
                                 slice_data,
-                                ttl=7200,  # 2 hours for live results
+                                ttl=settings.live_results_cache_ttl,  # 2 hours for live results
                             )
 
                         processed_timesteps.add((kstp, kper))
@@ -244,7 +245,7 @@ def _run_live_processing(
                     "live_processing": True,
                     "timesteps_available": len(processed_timesteps),
                 }
-                cache_timestep_index(project_id, run_id, index_data, ttl=7200)
+                cache_timestep_index(project_id, run_id, index_data, ttl=settings.live_results_cache_ttl)
 
                 publish(f"[Live Results] Processed {total_processed} timestep(s), min={global_min:.2f}, max={global_max:.2f}" if global_min else f"[Live Results] Processed {total_processed} timestep(s)")
 
@@ -351,13 +352,13 @@ def _run_live_processing(
 
                     # Cap periods to prevent unbounded memory growth
                     # (all data is already cached incrementally in Redis)
-                    if len(live_budget_data["periods"]) > 200:
+                    if len(live_budget_data["periods"]) > settings.live_budget_max_periods:
                         sorted_keys = sorted(live_budget_data["periods"].keys())
-                        for old_key in sorted_keys[:-200]:
+                        for old_key in sorted_keys[:-settings.live_budget_max_periods]:
                             del live_budget_data["periods"][old_key]
 
                     # Cache accumulated live budget
-                    cache_live_budget(project_id, run_id, live_budget_data, ttl=7200)
+                    cache_live_budget(project_id, run_id, live_budget_data, ttl=settings.live_results_cache_ttl)
 
             except Exception as e:
                 # CBC file might be locked or partially written

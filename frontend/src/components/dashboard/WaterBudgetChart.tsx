@@ -1,7 +1,7 @@
 import { memo, useState, useMemo, useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, BarChart3, AreaChart } from 'lucide-react'
 import { resultsApi, zoneDefinitionsApi, zoneBudgetApi } from '../../services/api'
 import type { ResultsSummary, PostProcessProgress, StressPeriodData } from '../../types'
 import { timesToDates, kperToEndTimes } from '../../utils/dateUtils'
@@ -9,7 +9,7 @@ import ExportButton from './ExportButton'
 import AwaitingData from './AwaitingData'
 import ZonePainterModal from './ZonePainterModal'
 import type { LayerZoneAssignments } from '../../utils/zoneColors'
-import { flowRateLabel, volumeLabel, timeAbbrev, labelWithUnit } from '../../utils/unitLabels'
+import { flowRateLabel, volumeLabel, timeAbbrev, labelWithUnit, getFlowConversions } from '../../utils/unitLabels'
 
 // Colorblind-safe palette (Okabe-Ito / Wong 2011 + Paul Tol extensions)
 const COLORS = [
@@ -66,7 +66,8 @@ const IGNORED = new Set([
   'FLOW_RIGHT_FACE', 'FLOW RIGHT FACE',
   'FLOW_FRONT_FACE', 'FLOW FRONT FACE',
   'FLOW_LOWER_FACE', 'FLOW LOWER FACE',
-  'FLOW_JA_FACE', 'FLOW JA FACE',
+  // Note: FLOW_JA_FACE intentionally NOT ignored — zbud6 converts these
+  // into meaningful inter-zone flow terms (FROM_ZONE_X / TO_ZONE_X)
 ])
 const isIgnored = (n: string) => {
   const stripped = n.replace(/^FROM_/, '').replace(/^TO_/, '')
@@ -447,11 +448,13 @@ function transformZoneBudgetRecords(
 
 function buildZoneTimeseriesTraces(
   transformed: TransformedZoneBudget,
-  selectedZone: string | null,
+  selectedZone: string,
   yLabel: string,
   chartHeight: number,
+  chartType: 'area' | 'bar' = 'area',
+  unitFactor: number = 1,
 ): { traces: Plotly.Data[]; layout: Partial<Plotly.Layout> } {
-  const { timesteps, zones, zoneNames, inflowComponents, outflowComponents, cumulativeStorage, hasStorage } = transformed
+  const { timesteps, zones, inflowComponents, outflowComponents, cumulativeStorage, hasStorage } = transformed
 
   const hasDate = timesteps.length > 0 && timesteps[0].date !== null
   const xValues = timesteps.map(ts => hasDate ? ts.date! : ts.time)
@@ -463,63 +466,29 @@ function buildZoneTimeseriesTraces(
 
   const traces: Plotly.Data[] = []
 
-  if (selectedZone === null) {
-    // "All Zones" summary: total inflow/outflow line per zone
-    zones.forEach((zone, zi) => {
-      const color = COLORS[zi % COLORS.length]
-      const zoneName = zoneNames[zi]
+  // Per-zone stacked view: inflow above zero, outflow below
+  const zoneIdx = zones.indexOf(selectedZone)
+  if (zoneIdx < 0) return { traces: [], layout: {} }
 
-      // Total inflow per timestep for this zone
-      const inVals = timesteps.map(ts => {
-        let sum = 0
-        for (const comp of inflowComponents) {
-          sum += ts.inflows[comp]?.[zone] ?? 0
-        }
-        return sum
-      })
+  const isBar = chartType === 'bar'
 
-      // Total outflow per timestep for this zone (negated)
-      const outVals = timesteps.map(ts => {
-        let sum = 0
-        for (const comp of outflowComponents) {
-          sum += ts.outflows[comp]?.[zone] ?? 0
-        }
-        return -sum
-      })
+  // Inflow traces
+  inflowComponents.forEach((comp) => {
+    const ci = componentColorIdx.get(comp) ?? 0
+    const baseColor = COLORS[ci % COLORS.length]
+    const yVals = timesteps.map(ts => (ts.inflows[comp]?.[selectedZone] ?? 0) * unitFactor)
 
-      traces.push({
-        x: xValues,
-        y: inVals,
-        type: 'scatter',
-        mode: 'lines',
-        name: `${zoneName} In`,
-        legendgroup: zoneName,
-        line: { color, width: 2 },
-      })
-
-      traces.push({
-        x: xValues,
-        y: outVals,
-        type: 'scatter',
-        mode: 'lines',
-        name: `${zoneName} Out`,
-        legendgroup: zoneName,
-        showlegend: false,
-        line: { color, width: 2, dash: 'dash' },
-      })
-    })
-  } else {
-    // Per-zone stacked area: inflow above zero, outflow below
-    const zoneIdx = zones.indexOf(selectedZone)
-    if (zoneIdx < 0) return { traces: [], layout: {} }
-
-    // Inflow stacked area traces
-    inflowComponents.forEach((comp) => {
-      const ci = componentColorIdx.get(comp) ?? 0
-      const baseColor = COLORS[ci % COLORS.length]
-      const yVals = timesteps.map(ts => ts.inflows[comp]?.[selectedZone] ?? 0)
-
-      if (yVals.some(v => v !== 0)) {
+    if (yVals.some(v => v !== 0)) {
+      if (isBar) {
+        traces.push({
+          x: xValues,
+          y: yVals,
+          type: 'bar',
+          name: comp,
+          legendgroup: comp,
+          marker: { color: baseColor, opacity: 0.85 },
+        } as Plotly.Data)
+      } else {
         traces.push({
           x: xValues,
           y: yVals,
@@ -531,16 +500,32 @@ function buildZoneTimeseriesTraces(
           line: { color: baseColor, width: 0.5 },
         })
       }
-    })
+    }
+  })
 
-    // Outflow stacked area traces (negated y-values)
-    outflowComponents.forEach((comp) => {
-      const ci = componentColorIdx.get(comp) ?? 0
-      const baseColor = COLORS[ci % COLORS.length]
-      const yVals = timesteps.map(ts => -(ts.outflows[comp]?.[selectedZone] ?? 0))
-      const hasInflow = inflowComponents.includes(comp)
+  // Outflow traces (negated y-values)
+  outflowComponents.forEach((comp) => {
+    const ci = componentColorIdx.get(comp) ?? 0
+    const baseColor = COLORS[ci % COLORS.length]
+    const yVals = timesteps.map(ts => -(ts.outflows[comp]?.[selectedZone] ?? 0) * unitFactor)
+    const hasInflow = inflowComponents.includes(comp)
 
-      if (yVals.some(v => v !== 0)) {
+    if (yVals.some(v => v !== 0)) {
+      if (isBar) {
+        traces.push({
+          x: xValues,
+          y: yVals,
+          type: 'bar',
+          name: comp,
+          legendgroup: comp,
+          showlegend: !hasInflow,
+          marker: {
+            color: baseColor,
+            opacity: 0.85,
+            pattern: { shape: '/' },
+          },
+        } as Plotly.Data)
+      } else {
         traces.push({
           x: xValues,
           y: yVals,
@@ -553,8 +538,8 @@ function buildZoneTimeseriesTraces(
           line: { color: baseColor, width: 0.5, dash: 'dot' },
         })
       }
-    })
-  }
+    }
+  })
 
   // Zero reference line
   traces.push({
@@ -569,7 +554,7 @@ function buildZoneTimeseriesTraces(
   })
 
   // Layout
-  const showStorageSubplot = hasStorage && selectedZone !== null
+  const showStorageSubplot = hasStorage
   const mainDomain: [number, number] = showStorageSubplot ? [0.25, 1.0] : [0, 1.0]
   const storageDomain: [number, number] = [0, 0.18]
 
@@ -577,6 +562,7 @@ function buildZoneTimeseriesTraces(
     autosize: true,
     height: chartHeight,
     margin: { l: 60, r: 20, t: 10, b: 80 },
+    barmode: isBar ? 'relative' : undefined,
     xaxis: {
       title: { text: hasDate ? 'Date' : undefined },
       type: hasDate ? 'date' : undefined,
@@ -602,7 +588,7 @@ function buildZoneTimeseriesTraces(
     if (stoVals && stoVals.some(v => v !== 0)) {
       traces.push({
         x: xValues,
-        y: stoVals,
+        y: stoVals.map(v => v * unitFactor),
         type: 'scatter',
         mode: 'lines',
         name: 'Cumulative \u0394Storage',
@@ -612,47 +598,6 @@ function buildZoneTimeseriesTraces(
         line: { color: '#6366f1', width: 2 },
       })
 
-      Object.assign(layout, {
-        xaxis2: {
-          anchor: 'y2',
-          matches: 'x',
-          showticklabels: false,
-        },
-        yaxis2: {
-          title: { text: '\u0394Storage', font: { size: 10 } },
-          domain: storageDomain,
-        },
-        grid: { rows: 2, columns: 1, roworder: 'top to bottom' as const },
-      })
-    }
-  }
-
-  // All Zones summary with storage lines
-  if (hasStorage && selectedZone === null) {
-    zones.forEach((zone, zi) => {
-      const stoVals = cumulativeStorage[zone]
-      if (stoVals && stoVals.some(v => v !== 0)) {
-        const color = COLORS[zi % COLORS.length]
-        const zoneName = zoneNames[zi]
-        traces.push({
-          x: xValues,
-          y: stoVals,
-          type: 'scatter',
-          mode: 'lines',
-          name: `${zoneName} \u0394Sto`,
-          legendgroup: zoneName,
-          showlegend: false,
-          yaxis: 'y2',
-          xaxis: 'x2',
-          line: { color, width: 1.5, dash: 'dot' },
-        })
-      }
-    })
-
-    // Add storage subplot for All Zones view too
-    const hasAnyStorage = zones.some(z => cumulativeStorage[z]?.some(v => v !== 0))
-    if (hasAnyStorage) {
-      layout.yaxis!.domain = [0.25, 1.0]
       Object.assign(layout, {
         xaxis2: {
           anchor: 'y2',
@@ -707,6 +652,8 @@ function WaterBudgetChart({ projectId, runId, summary, expanded = false, compare
 
   const [viewMode, setViewMode] = useState<'model' | 'zone'>('model')
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
+  const [chartType, setChartType] = useState<'area' | 'bar'>('area')
+  const [displayUnitIdx, setDisplayUnitIdx] = useState(0)
 
   // Zone budget state
   const [zoneAssignments, setZoneAssignments] = useState<LayerZoneAssignments>({})
@@ -863,21 +810,35 @@ function WaterBudgetChart({ projectId, runId, summary, expanded = false, compare
   const hasMultipleTimesteps = transformedZoneBudget && transformedZoneBudget.timesteps.length > 1
   const showZoneTimeseries = viewMode === 'zone' && hasCustomZoneBudget && hasMultipleTimesteps
 
+  // Default selectedZone to first zone when data becomes available
+  const effectiveSelectedZone = useMemo(() => {
+    if (selectedZone !== null && transformedZoneBudget?.zones.includes(selectedZone)) {
+      return selectedZone
+    }
+    return transformedZoneBudget?.zones[0] ?? null
+  }, [selectedZone, transformedZoneBudget])
 
   const chartHeight = expanded ? window.innerHeight - 160 : 400
   const showCustomView = viewMode === 'zone' && hasCustomZoneBudget
 
   // y-axis label: listing file source gives cumulative volumes, CBC gives flow rates
   const isListingSource = modelZoneBudget?.source === 'listing_file'
-  const yLabel = isListingSource ? volumeLabel(lengthUnit) : flowRateLabel(lengthUnit, timeUnit)
+
+  // Unit conversion
+  const flowConversions = useMemo(() => getFlowConversions(lengthUnit, timeUnit), [lengthUnit, timeUnit])
+  const activeConversion = flowConversions[displayUnitIdx] ?? flowConversions[0]
+  const unitFactor = activeConversion?.factor ?? 1
+  const yLabel = isListingSource
+    ? volumeLabel(lengthUnit)
+    : (displayUnitIdx === 0 ? flowRateLabel(lengthUnit, timeUnit) : `Flow Rate (${activeConversion.label})`)
   const tu = timeAbbrev(timeUnit)
   const xTimeLabel = labelWithUnit('Time', tu)
 
   // Build timeseries traces/layout if applicable
   const timeseriesChart = useMemo(() => {
-    if (!showZoneTimeseries || !transformedZoneBudget) return null
-    return buildZoneTimeseriesTraces(transformedZoneBudget, selectedZone, yLabel, chartHeight)
-  }, [showZoneTimeseries, transformedZoneBudget, selectedZone, yLabel, chartHeight])
+    if (!showZoneTimeseries || !transformedZoneBudget || !effectiveSelectedZone) return null
+    return buildZoneTimeseriesTraces(transformedZoneBudget, effectiveSelectedZone, yLabel, chartHeight, chartType, unitFactor)
+  }, [showZoneTimeseries, transformedZoneBudget, effectiveSelectedZone, yLabel, chartHeight, chartType, unitFactor])
 
   if (isLoading || (compareRunId && compareLoading)) {
     return (
@@ -970,12 +931,49 @@ function WaterBudgetChart({ projectId, runId, summary, expanded = false, compare
 
   // Zone selector UI for timeseries view
   const zoneSelector = showZoneTimeseries && transformedZoneBudget ? (
-    <ZoneSelector
-      zones={transformedZoneBudget.zones}
-      zoneNames={transformedZoneBudget.zoneNames}
-      selectedZone={selectedZone}
-      onSelect={setSelectedZone}
-    />
+    <div className="flex items-center gap-2 mb-2 flex-wrap">
+      <ZoneSelector
+        zones={transformedZoneBudget.zones}
+        zoneNames={transformedZoneBudget.zoneNames}
+        selectedZone={effectiveSelectedZone}
+        onSelect={setSelectedZone}
+      />
+      <div className="flex items-center gap-0.5 ml-2">
+        <button
+          onClick={() => setChartType('area')}
+          title="Stacked area chart"
+          className={`p-1 rounded transition-colors ${
+            chartType === 'area'
+              ? 'bg-indigo-50 text-indigo-600'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <AreaChart className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => setChartType('bar')}
+          title="Stacked bar chart"
+          className={`p-1 rounded transition-colors ${
+            chartType === 'bar'
+              ? 'bg-indigo-50 text-indigo-600'
+              : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {flowConversions.length > 1 && (
+        <select
+          value={displayUnitIdx}
+          onChange={(e) => setDisplayUnitIdx(Number(e.target.value))}
+          className="px-2 py-0.5 text-xs border border-slate-200 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 ml-1"
+        >
+          {flowConversions.map((conv, i) => (
+            <option key={i} value={i}>{conv.label}</option>
+          ))}
+        </select>
+      )}
+    </div>
   ) : null
 
   return (
@@ -1133,26 +1131,19 @@ function ZoneSelector({
 }) {
   if (zones.length <= 1) return null
 
+  // Effective selected zone (default to first if null)
+  const effective = selectedZone ?? zones[0]
+
   // 2-4 zones: tabs. 5+: dropdown.
   if (zones.length <= 4) {
     return (
-      <div className="flex items-center gap-1 mb-2">
-        <button
-          onClick={() => onSelect(null)}
-          className={`px-2 py-0.5 text-xs rounded transition-colors ${
-            selectedZone === null
-              ? 'bg-indigo-50 border border-indigo-300 text-indigo-600'
-              : 'border border-slate-200 text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          All Zones
-        </button>
+      <div className="flex items-center gap-1">
         {zones.map((z, i) => (
           <button
             key={z}
             onClick={() => onSelect(z)}
             className={`px-2 py-0.5 text-xs rounded transition-colors ${
-              selectedZone === z
+              effective === z
                 ? 'bg-indigo-50 border border-indigo-300 text-indigo-600'
                 : 'border border-slate-200 text-slate-500 hover:text-slate-700'
             }`}
@@ -1166,14 +1157,13 @@ function ZoneSelector({
 
   // 5+ zones: dropdown
   return (
-    <div className="flex items-center gap-2 mb-2">
+    <div className="flex items-center gap-2">
       <span className="text-xs text-slate-500">Zone:</span>
       <select
-        value={selectedZone ?? '__all__'}
-        onChange={(e) => onSelect(e.target.value === '__all__' ? null : e.target.value)}
+        value={effective}
+        onChange={(e) => onSelect(e.target.value)}
         className="px-2 py-0.5 text-xs border border-slate-200 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
       >
-        <option value="__all__">All Zones</option>
         {zones.map((z, i) => (
           <option key={z} value={z}>{zoneNames[i]}</option>
         ))}

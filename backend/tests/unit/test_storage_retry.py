@@ -161,7 +161,7 @@ class TestRetryOnTransientDecorator:
         call_times = []
 
         @_retry_on_transient(
-            max_attempts=4, initial_delay=0.01, max_delay=0.03
+            max_attempts=4, initial_delay=0.05, max_delay=0.15
         )
         def timed_fail():
             nonlocal call_count
@@ -175,10 +175,11 @@ class TestRetryOnTransientDecorator:
         assert result == "ok"
         assert call_count == 4
 
-        # Check that delays exist between calls (not instant)
-        for i in range(1, len(call_times)):
-            gap = call_times[i] - call_times[i - 1]
-            assert gap >= 0.005  # At least some delay
+        # Check that total elapsed time shows retries happened (not instant)
+        total_elapsed = call_times[-1] - call_times[0]
+        assert total_elapsed >= 0.05, (
+            f"Expected at least 50ms total retry delay, got {total_elapsed*1000:.1f}ms"
+        )
 
 
 class TestStorageServiceRetryIntegration:

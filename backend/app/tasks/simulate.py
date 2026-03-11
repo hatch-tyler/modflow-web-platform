@@ -1,23 +1,19 @@
 """Simulation task definitions."""
 
-import asyncio
 import logging
-import os
 import queue
 import shutil
 import subprocess
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-from celery import current_task
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.base import SessionLocal
@@ -320,7 +316,15 @@ def enable_mf6_budget_output(model_dir: Path, publish, save_cbc: bool = True) ->
     return True
 
 
-@celery_app.task(bind=True, name="app.tasks.simulate.run_forward_model")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.simulate.run_forward_model",
+    autoretry_for=(ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    max_retries=2,
+    retry_jitter=True,
+)
 def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = False) -> dict:
     """
     Execute a forward MODFLOW simulation.
@@ -351,9 +355,8 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
         try:
             redis_client.publish(channel, message)
             redis_client.rpush(history_key, message)
-            redis_client.ltrim(history_key, -20000, -1)
-            # Set TTL on history (24 hours) — refreshed on each append
-            redis_client.expire(history_key, 86400)
+            redis_client.ltrim(history_key, -settings.simulation_history_limit, -1)
+            redis_client.expire(history_key, settings.simulation_history_ttl)
         except Exception as e:
             logger.warning(f"Redis publish error (simulation continues): {e}")
 
@@ -382,7 +385,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
         # Acquire the Redis lock FIRST to prevent race conditions.
         # If two workers pick up the same task, only one gets the lock.
         lock_key = f"simulation_lock:{run_id}"
-        acquired = redis_client.set(lock_key, "1", nx=True, ex=7200)  # 2hr TTL
+        acquired = redis_client.set(lock_key, "1", nx=True, ex=settings.simulation_lock_ttl)
         if not acquired:
             publish("Task requeued but simulation is already running — skipping duplicate.")
             return {"status": "already_running", "run_id": run_id}
@@ -398,7 +401,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
 
         # Update run status to running (lock is already held)
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.utcnow()
+        run.started_at = datetime.now(timezone.utc)
         run.celery_task_id = self.request.id
         db.commit()
 
@@ -451,7 +454,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
             except Exception as e:
                 run.status = RunStatus.FAILED
                 run.error_message = f"Failed to download model files: {str(e)}"
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 publish(f"ERROR: {run.error_message}")
                 publish("__STATUS__:failed")
@@ -462,7 +465,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
             if not executable:
                 run.status = RunStatus.FAILED
                 run.error_message = f"MODFLOW executable not found for {model_type}"
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 publish(f"ERROR: {run.error_message}")
                 publish("__STATUS__:failed")
@@ -475,7 +478,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
             if not nam_file:
                 run.status = RunStatus.FAILED
                 run.error_message = "Could not find model name file"
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 publish(f"ERROR: {run.error_message}")
                 publish("__STATUS__:failed")
@@ -559,8 +562,8 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                             for b_line in batch:
                                 pipe.publish(channel, b_line)
                                 pipe.rpush(history_key, b_line)
-                            pipe.ltrim(history_key, -20000, -1)
-                            pipe.expire(history_key, 86400)
+                            pipe.ltrim(history_key, -settings.simulation_history_limit, -1)
+                            pipe.expire(history_key, settings.simulation_history_ttl)
                             pipe.execute()
                         except Exception as e:
                             logger.warning(f"Redis pipeline error (simulation continues): {e}")
@@ -576,7 +579,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                                 live_thread.join(timeout=10)
                             run.status = RunStatus.CANCELLED
                             run.error_message = "Cancelled by user"
-                            run.completed_at = datetime.utcnow()
+                            run.completed_at = datetime.now(timezone.utc)
                             db.commit()
                             publish("Simulation cancelled by user")
                             publish("__STATUS__:cancelled")
@@ -601,7 +604,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                     run.error_message = f"Simulation failed with return code {return_code}"
                     publish(f"Simulation failed with return code {return_code}")
 
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
 
                 # Commit status immediately so it's saved even if upload phase crashes (OOM)
                 db.commit()
@@ -684,7 +687,7 @@ def run_forward_model(self, run_id: str, project_id: str, save_budget: bool = Fa
                     process.wait()
                 run.status = RunStatus.FAILED
                 run.error_message = str(e)
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
                 db.commit()
                 publish(f"ERROR: {str(e)}")
                 publish("__STATUS__:failed")
@@ -712,14 +715,14 @@ def cancel_run(self, run_id: str) -> dict:
 
         # Set cancellation flag in Redis
         redis_client = get_sync_client()
-        redis_client.setex(f"cancel:{run_id}", 300, "1")  # Expires in 5 minutes
+        redis_client.setex(f"cancel:{run_id}", settings.simulation_cancel_ttl, "1")
 
         if run.celery_task_id:
             # Revoke the Celery task
             celery_app.control.revoke(run.celery_task_id, terminate=True)
 
         run.status = RunStatus.CANCELLED
-        run.completed_at = datetime.utcnow()
+        run.completed_at = datetime.now(timezone.utc)
         run.error_message = "Cancelled by user"
         db.commit()
 

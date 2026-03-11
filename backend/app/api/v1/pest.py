@@ -5,7 +5,7 @@ import io
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.models.base import get_db
 from app.models.project import Project, Run, RunStatus, RunType
 from app.services.storage import get_storage_service
+from app.api.v1.dependencies import get_project_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -86,21 +87,6 @@ class PestRunRequest(BaseModel):
     config: Optional[PestConfig] = None
 
 
-async def _get_project_or_404(
-    project_id: UUID, db: AsyncSession
-) -> Project:
-    """Get project or raise 404."""
-    stmt = select(Project).where(Project.id == project_id)
-    result = await db.execute(stmt)
-    project = result.scalar_one_or_none()
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-    return project
-
-
 @router.get("/parameters")
 async def get_available_parameters(
     project_id: UUID,
@@ -115,7 +101,7 @@ async def get_available_parameters(
     - status="scanning" with task_id/progress (scan in-flight)
     - status="not_started" (no cache, no scan running)
     """
-    project = await _get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db)
 
     if not project.is_valid or not project.storage_path:
         raise HTTPException(
@@ -197,7 +183,7 @@ async def start_parameter_scan(
     Returns immediately with a task_id. Poll GET /parameters or
     GET /parameters/scan/{task_id} for progress.
     """
-    project = await _get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db)
 
     if not project.is_valid or not project.storage_path:
         raise HTTPException(
@@ -267,7 +253,7 @@ async def get_parameter_scan_status(
 
     When status is "completed", also returns the cached parameters.
     """
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     from app.services.redis_manager import get_sync_client
     rc = get_sync_client()
@@ -325,7 +311,7 @@ async def clear_parameter_cache(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Clear cached parameter discovery results for this project."""
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     storage = get_storage_service()
     cache_path = f"projects/{project_id}/pest/parameters_cache.json"
@@ -343,7 +329,7 @@ async def get_pest_config(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get saved PEST configuration for a project."""
-    project = await _get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db)
 
     storage = get_storage_service()
     config_obj = f"projects/{project_id}/pest/pest_config.json"
@@ -362,7 +348,7 @@ async def save_pest_config(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Save PEST configuration for a project."""
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     storage = get_storage_service()
     config_obj = f"projects/{project_id}/pest/pest_config.json"
@@ -389,7 +375,7 @@ async def start_pest_run(
     Creates a run record and queues the calibration Celery task.
     Requires observations to be uploaded first.
     """
-    project = await _get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db)
 
     if not project.is_valid or not project.storage_path:
         raise HTTPException(
@@ -441,7 +427,7 @@ async def start_pest_run(
     run = Run(
         project_id=project_id,
         name=request.name
-        or f"PEST++ {request.method.upper()} {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        or f"PEST++ {request.method.upper()} {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
         run_type=run_type,
         status=RunStatus.QUEUED,
         config=config_data,
@@ -481,7 +467,7 @@ async def list_pest_runs(
     db: AsyncSession = Depends(get_db),
 ) -> list:
     """List calibration runs for a project."""
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     stmt = (
         select(Run)
@@ -889,7 +875,7 @@ async def get_network_info(
     Returns the manager host/port and MinIO connection details
     that remote agents need to connect.
     """
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     return {
         "manager_port": settings.pest_manager_port,
@@ -916,7 +902,7 @@ async def get_current_run_info(
     """
     from app.services.redis_manager import get_sync_client
 
-    await _get_project_or_404(project_id, db)
+    await get_project_or_404(project_id, db)
 
     redis_client = get_sync_client()
 

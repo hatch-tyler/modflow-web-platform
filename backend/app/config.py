@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     mfnwt_exe_path: str = "/usr/local/bin/mfnwt"
     mfusg_exe_path: str = "/usr/local/bin/mfusg"
 
+    # Zone budget executables
+    zbud6_exe_path: str = "/usr/local/bin/zbud6"
+    zonbud3_exe_path: str = "/usr/local/bin/zonbud3"
+    zonbudusg_exe_path: str = "/usr/local/bin/zonbudusg"
+
     # PEST++ executables
     pestpp_exe_path: str = "/usr/local/bin/pestpp-glm"
     pestpp_ies_exe_path: str = "/usr/local/bin/pestpp-ies"
@@ -151,6 +156,18 @@ class Settings(BaseSettings):
     # File limits
     max_upload_size_mb: int = 500
     max_model_files: int = 5000  # Increased to support models with many external array files
+
+    # Simulation Redis settings
+    simulation_history_limit: int = 20000  # Max output lines kept in Redis history
+    simulation_history_ttl: int = 86400  # 24h TTL on history keys
+    simulation_lock_ttl: int = 7200  # 2h lock TTL for simulation dedup
+    simulation_cancel_ttl: int = 300  # 5min TTL for cancel flag
+
+    # Live results settings
+    live_results_poll_interval: int = 5  # Seconds between HDS file polls
+    live_results_wait_timeout: int = 300  # Seconds to wait for HDS file to appear
+    live_results_cache_ttl: int = 7200  # 2h TTL for live result cache keys
+    live_budget_max_periods: int = 200  # Max budget periods to cache
 
 
 @lru_cache

@@ -37,6 +37,11 @@ from app.services.slice_cache import (
     get_cached_live_budget,
 )
 from app.services.storage import get_storage_service
+from app.api.v1.dependencies import (
+    get_project_or_404,
+    get_run_or_404,
+    get_completed_run_with_project,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -92,64 +97,15 @@ def _extract_listing_discrepancies(run, storage) -> list[float]:
     return discrepancies
 
 
-async def _get_run_or_404(
-    project_id: UUID, run_id: UUID, db: AsyncSession
-) -> tuple[Run, Project]:
-    """Validate that a completed run exists and return it with its project."""
-    stmt = select(Run).where(Run.id == run_id, Run.project_id == project_id)
-    result = await db.execute(stmt)
-    run = result.scalar_one_or_none()
-
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found in project {project_id}",
-        )
-
-    if run.status != RunStatus.COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Run is not completed (status: {run.status.value})",
-        )
-
-    if not run.results_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No results available for this run",
-        )
-
-    stmt_proj = select(Project).where(Project.id == project_id)
-    result_proj = await db.execute(stmt_proj)
-    project = result_proj.scalar_one_or_none()
-
-    return run, project
-
-
 async def _get_run_for_live_results(
     project_id: UUID, run_id: UUID, db: AsyncSession
 ) -> tuple[Run, Project]:
     """Get run for live results - allows running or completed status."""
-    stmt = select(Run).where(Run.id == run_id, Run.project_id == project_id)
-    result = await db.execute(stmt)
-    run = result.scalar_one_or_none()
-
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Run {run_id} not found in project {project_id}",
-        )
-
-    # Allow running or completed status for live results
-    if run.status not in [RunStatus.RUNNING, RunStatus.COMPLETED]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Run is not running or completed (status: {run.status.value})",
-        )
-
-    stmt_proj = select(Project).where(Project.id == project_id)
-    result_proj = await db.execute(stmt_proj)
-    project = result_proj.scalar_one_or_none()
-
+    project = await get_project_or_404(project_id, db)
+    run = await get_run_or_404(
+        project_id, run_id, db,
+        allowed_statuses=[RunStatus.RUNNING, RunStatus.COMPLETED],
+    )
     return run, project
 
 
@@ -164,7 +120,7 @@ async def get_results_summary(
 
     Returns heads summary, budget overview, convergence info, and metadata.
     """
-    run, _ = await _get_run_or_404(project_id, run_id, db)
+    run, _ = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     obj_name = f"{run.results_path}/results_summary.json"
@@ -219,7 +175,7 @@ async def get_head_slice(
     total_start = time.time()
 
     t0 = time.time()
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     db_time = time.time() - t0
     logger.info(f"[PERF] DB lookup took {db_time:.3f}s")
 
@@ -322,7 +278,7 @@ async def get_available_timesteps(
 
     This is cached for fast subsequent access.
     """
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     model_type = project.model_type.value if project and project.model_type else "mf6"
 
     result = get_timestep_index(
@@ -353,7 +309,7 @@ async def get_head_stats(
     Samples multiple timesteps to determine global min/max head values
     without loading all data into memory.
     """
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     model_type = project.model_type.value if project and project.model_type else "mf6"
 
     result = get_head_statistics(
@@ -696,7 +652,7 @@ async def get_grid_info(
     Returns delr, delc, nrow, ncol, xoff, yoff, angrot, epsg, length_unit.
     Used by the frontend to construct structured grid map views.
     """
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
 
     return {
         "delr": project.delr,
@@ -727,7 +683,7 @@ async def get_budget(
     Returns quick-mode (last timestep only) data when available.
     Supports pagination via limit/offset query parameters for large models.
     """
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     obj_name = f"{run.results_path}/processed/budget.json"
@@ -775,7 +731,7 @@ async def get_timeseries(
     """
     import flopy.utils
 
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
 
     model_type = project.model_type.value if project and project.model_type else "mf6"
     is_unstructured = model_type == "mfusg"
@@ -933,7 +889,7 @@ async def get_grid_geometry(
 
     Loads grid_geometry.json from MinIO (created during post-processing).
     """
-    run, _ = await _get_run_or_404(project_id, run_id, db)
+    run, _ = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     obj_name = f"{run.results_path}/processed/grid_geometry.json"
@@ -965,7 +921,7 @@ async def render_head_contour(
 
     Supports on-demand head slice extraction if pre-processed file doesn't exist.
     """
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     # Load grid geometry
@@ -1037,7 +993,7 @@ async def export_heads_csv(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export head slice as CSV. Supports on-demand extraction."""
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     # Try pre-processed file first
@@ -1117,7 +1073,7 @@ async def export_drawdown_csv(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export drawdown (initial - current) as CSV. Supports on-demand extraction."""
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
     model_type = project.model_type.value if project and project.model_type else "mf6"
 
@@ -1217,7 +1173,7 @@ async def export_budget_csv(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export water budget as flat CSV."""
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     budget = None
@@ -1273,7 +1229,7 @@ async def export_timeseries_csv(
     """Export head time series for a specific cell as CSV."""
     import flopy.utils
 
-    run, project = await _get_run_or_404(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(project_id, run_id, db)
     storage = get_storage_service()
 
     model_type = project.model_type.value if project and project.model_type else "mf6"

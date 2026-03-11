@@ -1,11 +1,10 @@
 """Simulation execution API endpoints."""
 
-import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -16,6 +15,7 @@ from app.rate_limit import limiter
 from app.models.base import get_db
 from app.models.project import Project, Run, RunStatus, RunType
 from app.tasks.simulate import run_forward_model, cancel_run
+from app.api.v1.dependencies import get_project_or_404
 
 router = APIRouter(prefix="/projects/{project_id}/simulation", tags=["simulation"])
 settings = get_settings()
@@ -43,30 +43,12 @@ class RunResponse(BaseModel):
     created_at: str
 
 
-async def get_project_or_404(
-    project_id: UUID,
-    db: AsyncSession,
-) -> Project:
-    """Get project by ID or raise 404."""
-    stmt = select(Project).where(Project.id == project_id)
-    result = await db.execute(stmt)
-    project = result.scalar_one_or_none()
-
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-
-    return project
-
-
 @router.post("/run")
 @limiter.limit("10/minute")
 async def start_simulation(
     request: Request,
     project_id: UUID,
-    run_config: RunCreate = None,
+    run_config: Optional[RunCreate] = None,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -105,7 +87,7 @@ async def start_simulation(
 
     run = Run(
         project_id=project_id,
-        name=run_config.name if run_config else f"Run {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        name=run_config.name if run_config else f"Run {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
         run_type=RunType.FORWARD,
         status=RunStatus.QUEUED,
         config=run_options if run_options else None,
@@ -133,7 +115,7 @@ async def start_simulation(
 @router.get("/runs")
 async def list_runs(
     project_id: UUID,
-    limit: int = 10,
+    limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> list:
     """List recent simulation runs for a project."""

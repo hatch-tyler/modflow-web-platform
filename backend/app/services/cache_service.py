@@ -11,7 +11,7 @@ Includes graceful degradation when services are unavailable.
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.config import get_settings
@@ -235,7 +235,7 @@ class CacheService:
         try:
             cache_data = {
                 **data,
-                "_cached_at": datetime.utcnow().isoformat(),
+                "_cached_at": datetime.now(timezone.utc).isoformat(),
             }
             self.storage.upload_bytes(
                 settings.minio_bucket_models,

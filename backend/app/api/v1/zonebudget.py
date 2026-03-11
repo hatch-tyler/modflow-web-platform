@@ -1,10 +1,14 @@
 """Zone budget API endpoint using FloPy ZoneBudget."""
 
 import asyncio
+import csv
 import hashlib
+import io
 import json
 import logging
 import re
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -39,7 +43,8 @@ IGNORED_BUDGET_TERMS = {
     'FLOW_RIGHT_FACE', 'FLOW RIGHT FACE',
     'FLOW_FRONT_FACE', 'FLOW FRONT FACE',
     'FLOW_LOWER_FACE', 'FLOW LOWER FACE',
-    'FLOW_JA_FACE', 'FLOW JA FACE',
+    # Note: FLOW_JA_FACE intentionally NOT ignored — zbud6 converts these
+    # into meaningful inter-zone flow terms (FROM_ZONE_X / TO_ZONE_X)
 }
 
 # MF6 CBC record types to skip (internal flows / ancillary data, not budget terms)
@@ -166,6 +171,440 @@ def _compute_mf6_zone_budget(
     cbc.close()
 
     all_zone_names = [num_to_name[zn] for zn in zone_nums]
+    columns = ['name', 'kper', 'kstp'] + zone_cols
+
+    return {
+        'zone_names': all_zone_names,
+        'columns': columns,
+        'records': records,
+    }
+
+
+def _find_grb_object(storage, results_path: str) -> str | None:
+    """Find the GRB (binary grid) file object in MinIO results."""
+    output_objects = storage.list_objects(
+        settings.minio_bucket_models,
+        prefix=results_path,
+        recursive=True,
+    )
+    best = None
+    for obj_name in output_objects:
+        if obj_name.lower().endswith(".grb"):
+            # Prefer file with fewest dots (main grid file)
+            if best is None or obj_name.count(".") < best.count("."):
+                best = obj_name
+    return best
+
+
+def _write_mf6_zone_file(path: Path, zone_array: np.ndarray) -> None:
+    """Write a MODFLOW 6 zone file (.zon) for zbud6."""
+    flat = zone_array.ravel()
+    ncells = len(flat)
+    lines = [
+        "BEGIN DIMENSIONS",
+        f"  NCELLS {ncells}",
+        "END DIMENSIONS",
+        "",
+        "BEGIN GRIDDATA",
+        "  IZONE",
+        "    INTERNAL FACTOR 1 IPRN 0",
+    ]
+    # Write 20 values per line
+    for i in range(0, ncells, 20):
+        chunk = flat[i:i + 20]
+        lines.append("      " + " ".join(str(int(v)) for v in chunk))
+    lines.append("END GRIDDATA")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def _write_zbud6_namefile(path: Path, zon_file: str, bud_file: str, grb_file: str) -> None:
+    """Write a zbud6 name file (.zbnam)."""
+    content = "\n".join([
+        "BEGIN ZONEBUDGET",
+        f"  ZON6  {zon_file}",
+        f"  BUD  {bud_file}",
+        f"  GRB  {grb_file}",
+        "END ZONEBUDGET",
+    ]) + "\n"
+    path.write_text(content)
+
+
+def _parse_zbud6_csv(csv_path: Path, zone_name_to_num: dict[str, int]) -> dict:
+    """
+    Parse zbud6 CSV output into zone budget record format.
+
+    zbud6 CSV columns: TOTIM,KSTP,KPER,ZONE,{TERM}_IN,{TERM}_OUT,FROM_ZONE_X,TO_ZONE_X,...,TOTAL_IN,TOTAL_OUT,IN-OUT
+    """
+    num_to_name = {v: k for k, v in zone_name_to_num.items()}
+    zone_nums = sorted(zone_name_to_num.values())
+    zone_cols = [f"ZONE_{zn}" for zn in zone_nums]
+
+    records = []
+    with open(csv_path, 'r') as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            return {'zone_names': [], 'columns': [], 'records': []}
+
+        # Collect rows grouped by (kper, kstp) and budget term
+        # Each CSV row is for one zone; we need to pivot to per-term records
+        grouped: dict[tuple[int, int], dict[str, dict[str, float]]] = {}
+
+        for row in reader:
+            kper = int(row.get('KPER', row.get('kper', '0')))
+            kstp = int(row.get('KSTP', row.get('kstp', '0')))
+            zone_label = row.get('ZONE', row.get('zone', ''))
+
+            # Extract zone number from label like "ZONE_6" or "ZONE 6"
+            zone_match = re.search(r'(\d+)', zone_label)
+            if not zone_match:
+                continue
+            zone_num = int(zone_match.group(1))
+            if zone_num not in zone_nums:
+                continue
+            zone_col = f"ZONE_{zone_num}"
+
+            key = (kper, kstp)
+            if key not in grouped:
+                grouped[key] = {}
+
+            # Process each column
+            for col_name, val_str in row.items():
+                col_upper = col_name.strip().upper()
+
+                # Skip metadata and totals
+                if col_upper in ('TOTIM', 'KSTP', 'KPER', 'ZONE', 'TOTAL_IN',
+                                 'TOTAL_OUT', 'IN-OUT', 'IN_OUT'):
+                    continue
+
+                try:
+                    val = float(val_str)
+                except (ValueError, TypeError):
+                    continue
+
+                if abs(val) < 1e-30:
+                    continue
+
+                # Determine record name from column
+                if col_upper.endswith('_IN'):
+                    term = col_upper[:-3]  # Remove _IN
+                    rec_name = f"FROM_{term}"
+                elif col_upper.endswith('_OUT'):
+                    term = col_upper[:-4]  # Remove _OUT
+                    rec_name = f"TO_{term}"
+                elif col_upper.startswith('FROM_ZONE_') or col_upper.startswith('FROM ZONE '):
+                    rec_name = col_upper.replace(' ', '_')
+                elif col_upper.startswith('TO_ZONE_') or col_upper.startswith('TO ZONE '):
+                    rec_name = col_upper.replace(' ', '_')
+                else:
+                    continue
+
+                if rec_name not in grouped[key]:
+                    grouped[key][rec_name] = {}
+                # Use abs for FROM_ (inflow), abs for TO_ (outflow) — both stored as positive
+                grouped[key][rec_name][zone_col] = abs(val)
+
+        # Convert grouped data to records
+        for (kper, kstp), terms in sorted(grouped.items()):
+            for rec_name, zone_vals in sorted(terms.items()):
+                rec: dict = {'name': rec_name, 'kper': kper, 'kstp': kstp}
+                for zc in zone_cols:
+                    rec[zc] = zone_vals.get(zc, 0.0)
+                records.append(rec)
+
+    all_zone_names = [num_to_name[zn] for zn in zone_nums]
+    columns = ['name', 'kper', 'kstp'] + zone_cols
+
+    return {
+        'zone_names': all_zone_names,
+        'columns': columns,
+        'records': records,
+    }
+
+
+def _compute_mf6_zone_budget_zbud6(
+    cbc_path: str,
+    grb_path: str,
+    zone_array: np.ndarray,
+    zone_name_to_num: dict[str, int],
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    kstpkper_filter: list | None = None,
+) -> dict:
+    """
+    Compute MF6 zone budget using the zbud6 executable.
+
+    This replaces the custom Python approach with the compiled Fortran binary
+    that handles FLOW-JA-FACE natively for inter-zone flows.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+
+        if progress_callback:
+            progress_callback(0, 10, "Writing zone budget input files...")
+
+        # Copy CBC and GRB files to temp directory
+        local_cbc = temp / "output.cbc"
+        local_grb = temp / "grid.grb"
+        shutil.copy2(cbc_path, str(local_cbc))
+        shutil.copy2(grb_path, str(local_grb))
+
+        # Write zone file
+        zon_file = temp / "zonebud.zon"
+        _write_mf6_zone_file(zon_file, zone_array)
+
+        # Write name file
+        nam_file = temp / "zonebud.zbnam"
+        _write_zbud6_namefile(nam_file, "zonebud.zon", "output.cbc", "grid.grb")
+
+        if progress_callback:
+            progress_callback(2, 10, "Running zbud6...")
+
+        # Run zbud6
+        try:
+            result = subprocess.run(
+                [settings.zbud6_exe_path, "zonebud.zbnam"],
+                cwd=str(temp),
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute timeout
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("zbud6 timed out after 600 seconds")
+        except FileNotFoundError:
+            raise RuntimeError(f"zbud6 executable not found at {settings.zbud6_exe_path}")
+
+        if result.returncode != 0:
+            stderr = result.stderr[:500] if result.stderr else ""
+            stdout = result.stdout[:500] if result.stdout else ""
+            raise RuntimeError(
+                f"zbud6 failed (exit code {result.returncode}): {stderr or stdout}"
+            )
+
+        if progress_callback:
+            progress_callback(7, 10, "Parsing zbud6 output...")
+
+        # Find the CSV output file
+        csv_files = list(temp.glob("*.csv"))
+        if not csv_files:
+            raise RuntimeError("zbud6 did not produce a CSV output file")
+
+        # Parse the CSV output
+        parsed = _parse_zbud6_csv(csv_files[0], zone_name_to_num)
+
+        # Apply kstpkper filter if specified
+        if kstpkper_filter is not None:
+            filter_set = {(int(k[0]), int(k[1])) for k in kstpkper_filter}
+            parsed['records'] = [
+                r for r in parsed['records']
+                if (r['kstp'], r['kper']) in filter_set
+            ]
+
+        if progress_callback:
+            progress_callback(10, 10, "Zone budget complete")
+
+        return parsed
+
+
+def _write_classic_zone_file(path: Path, zone_array: np.ndarray) -> None:
+    """Write a classic MODFLOW zone file for zonbud3/zonbudusg."""
+    import flopy.utils
+    flopy.utils.ZoneBudget.write_zone_file(str(path), zone_array)
+
+
+def _compute_classic_zone_budget_exe(
+    exe_path: str,
+    cbc_path: str,
+    zone_array: np.ndarray,
+    zone_name_to_num: dict[str, int],
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> dict:
+    """
+    Compute zone budget for MF2005/NWT/USG using zonbud3 or zonbudusg executable.
+
+    These executables read input interactively, so we pipe stdin.
+    """
+    num_to_name = {v: k for k, v in zone_name_to_num.items()}
+    zone_nums = sorted(zone_name_to_num.values())
+    zone_cols = [f"ZONE_{zn}" for zn in zone_nums]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+
+        if progress_callback:
+            progress_callback(0, 10, "Writing zone budget input files...")
+
+        # Copy CBC file
+        local_cbc = temp / "output.cbc"
+        shutil.copy2(cbc_path, str(local_cbc))
+
+        # Write zone file
+        zon_file = temp / "zonebud.zon"
+        _write_classic_zone_file(zon_file, zone_array)
+
+        listing_file = "zonebud.lst"
+        csv_file = "zonebud.csv"
+
+        if progress_callback:
+            progress_callback(2, 10, "Running zone budget executable...")
+
+        # Build stdin for interactive prompts
+        # zonbud3/zonbudusg prompt sequence:
+        # 1. Listing file name
+        # 2. CBC file name
+        # 3. Title
+        # 4. Zone file name
+        # 5. Option (A=all timesteps)
+        stdin_input = "\n".join([
+            listing_file,
+            "output.cbc",
+            "Zone Budget",
+            "zonebud.zon",
+            "A",
+        ]) + "\n"
+
+        try:
+            result = subprocess.run(
+                [exe_path],
+                input=stdin_input,
+                cwd=str(temp),
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Zone budget executable timed out after 600 seconds")
+        except FileNotFoundError:
+            raise RuntimeError(f"Zone budget executable not found at {exe_path}")
+
+        if progress_callback:
+            progress_callback(7, 10, "Parsing zone budget output...")
+
+        # Try to find and parse listing file output
+        lst_path = temp / listing_file
+        if not lst_path.exists():
+            # Check for any .lst files
+            lst_files = list(temp.glob("*.lst"))
+            if lst_files:
+                lst_path = lst_files[0]
+
+        if not lst_path.exists():
+            raise RuntimeError(
+                f"Zone budget executable did not produce output. "
+                f"stdout: {result.stdout[:300]}, stderr: {result.stderr[:300]}"
+            )
+
+        # Parse the listing file
+        lst_content = lst_path.read_text(encoding='utf-8', errors='ignore')
+        parsed = _parse_zonbud_listing(lst_content, zone_name_to_num)
+
+        if progress_callback:
+            progress_callback(10, 10, "Zone budget complete")
+
+        return parsed
+
+
+def _parse_zonbud_listing(
+    listing_content: str,
+    zone_name_to_num: dict[str, int],
+) -> dict:
+    """
+    Parse zonbud3/zonbudusg listing file output into zone budget record format.
+
+    The listing file contains budget tables with IN/OUT sections per zone per timestep.
+    """
+    num_to_name = {v: k for k, v in zone_name_to_num.items()}
+    zone_nums = sorted(zone_name_to_num.values())
+    zone_cols = [f"ZONE_{zn}" for zn in zone_nums]
+
+    records = []
+
+    # Find budget sections — each starts with "FLOW BUDGET FOR ZONE" or similar
+    # and contains IN: / OUT: sections with component values
+    sections = list(re.finditer(
+        r'(?:FLOW\s+BUDGET\s+FOR\s+ZONE\s+(\d+)|'
+        r'Zone\s+(\d+)\s+Budget)',
+        listing_content,
+        re.IGNORECASE,
+    ))
+
+    if not sections:
+        # Fallback: try to parse as a simpler format
+        return {
+            'zone_names': [num_to_name.get(zn, f"Zone {zn}") for zn in zone_nums],
+            'columns': ['name', 'kper', 'kstp'] + zone_cols,
+            'records': [],
+        }
+
+    # Parse each zone budget section
+    for i, section_match in enumerate(sections):
+        zone_num = int(section_match.group(1) or section_match.group(2))
+        if zone_num not in zone_nums:
+            continue
+
+        zone_col = f"ZONE_{zone_num}"
+
+        # Get section text until next section or end
+        start = section_match.start()
+        end = sections[i + 1].start() if i + 1 < len(sections) else len(listing_content)
+        section_text = listing_content[start:end]
+
+        # Extract stress period and time step
+        sp_match = re.search(r'STRESS PERIOD\s+(\d+)', section_text, re.IGNORECASE)
+        ts_match = re.search(r'TIME STEP\s+(\d+)', section_text, re.IGNORECASE)
+        kper = int(sp_match.group(1)) if sp_match else 1
+        kstp = int(ts_match.group(1)) if ts_match else 1
+
+        # Parse IN section
+        in_match = re.search(
+            r'\bIN:[^\n]*\n[^\n]*-+[^\n]*\n(.*?)(?=TOTAL\s+IN|OUT:)',
+            section_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if in_match:
+            for name, _cumul, rate in _parse_budget_lines_two_col(in_match.group(1)):
+                cleaned = name.upper().replace(' ', '_').replace('-', '_')
+                if cleaned in IGNORED_BUDGET_TERMS:
+                    continue
+                rec_name = f'FROM_{cleaned}'
+                # Find or create record for this term at this timestep
+                existing = next(
+                    (r for r in records if r['name'] == rec_name and r['kper'] == kper and r['kstp'] == kstp),
+                    None,
+                )
+                if existing:
+                    existing[zone_col] = abs(rate)
+                else:
+                    rec: dict = {'name': rec_name, 'kper': kper, 'kstp': kstp}
+                    for zc in zone_cols:
+                        rec[zc] = 0.0
+                    rec[zone_col] = abs(rate)
+                    records.append(rec)
+
+        # Parse OUT section
+        out_match = re.search(
+            r'\bOUT:[^\n]*\n[^\n]*-+[^\n]*\n(.*?)(?=TOTAL\s+OUT|\bIN\s*-\s*OUT\b|PERCENT)',
+            section_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if out_match:
+            for name, _cumul, rate in _parse_budget_lines_two_col(out_match.group(1)):
+                cleaned = name.upper().replace(' ', '_').replace('-', '_')
+                if cleaned in IGNORED_BUDGET_TERMS:
+                    continue
+                rec_name = f'TO_{cleaned}'
+                existing = next(
+                    (r for r in records if r['name'] == rec_name and r['kper'] == kper and r['kstp'] == kstp),
+                    None,
+                )
+                if existing:
+                    existing[zone_col] = abs(rate)
+                else:
+                    rec = {'name': rec_name, 'kper': kper, 'kstp': kstp}
+                    for zc in zone_cols:
+                        rec[zc] = 0.0
+                    rec[zone_col] = abs(rate)
+                    records.append(rec)
+
+    all_zone_names = [num_to_name.get(zn, f"Zone {zn}") for zn in zone_nums]
     columns = ['name', 'kper', 'kstp'] + zone_cols
 
     return {
@@ -634,6 +1073,29 @@ def _sync_compute_zone_budget(
                 if all_kstpkper:
                     kstpkper_filter = [all_kstpkper[-1]]
 
+            # Try zbud6 executable first (handles inter-zone flows via FLOW-JA-FACE)
+            zbud6_path = settings.zbud6_exe_path
+            use_zbud6 = shutil.which(zbud6_path) is not None or Path(zbud6_path).exists()
+
+            if use_zbud6:
+                # Find and download GRB file
+                grb_obj = _find_grb_object(storage, _results_path_from_cbc(cbc_obj))
+                if grb_obj:
+                    local_grb = Path(temp_dir) / "grid.grb"
+                    storage.download_to_file(settings.minio_bucket_models, grb_obj, local_grb)
+                    try:
+                        return _compute_mf6_zone_budget_zbud6(
+                            str(local_cbc), str(local_grb),
+                            zone_array, zone_name_to_num,
+                            progress_callback=progress_callback,
+                            kstpkper_filter=kstpkper_filter,
+                        )
+                    except Exception as e:
+                        logger.warning(f"zbud6 failed, falling back to Python: {e}")
+                else:
+                    logger.warning("GRB file not found, falling back to Python MF6 zone budget")
+
+            # Fallback: custom Python MF6 zone budget (no inter-zone flows)
             return _compute_mf6_zone_budget(
                 str(local_cbc), zone_array, zone_name_to_num,
                 nlay, nrow, ncol,
@@ -641,6 +1103,24 @@ def _sync_compute_zone_budget(
                 kstpkper_filter=kstpkper_filter,
             )
 
+        # Classic models: try executable first, then FloPy fallback
+        if is_usg:
+            exe_path = settings.zonbudusg_exe_path
+        else:
+            exe_path = settings.zonbud3_exe_path
+
+        use_exe = shutil.which(exe_path) is not None or Path(exe_path).exists()
+        if use_exe:
+            try:
+                return _compute_classic_zone_budget_exe(
+                    exe_path, str(local_cbc),
+                    zone_array, zone_name_to_num,
+                    progress_callback=progress_callback,
+                )
+            except Exception as e:
+                logger.warning(f"Zone budget executable failed, falling back to FloPy: {e}")
+
+        # FloPy fallback for classic models
         if is_usg:
             cbc = flopy.utils.CellBudgetFile(
                 str(local_cbc), precision="double"
@@ -675,6 +1155,19 @@ def _sync_compute_zone_budget(
         "columns": col_names,
         "records": records,
     }
+
+
+def _results_path_from_cbc(cbc_obj: str) -> str:
+    """Extract the results base path from a CBC object path."""
+    # CBC is typically at {results_path}/output/something.cbc
+    # We want the results_path (parent of output/)
+    parts = cbc_obj.split("/")
+    # Find 'output' directory and take everything before it
+    if "output" in parts:
+        idx = parts.index("output")
+        return "/".join(parts[:idx])
+    # Fallback: take parent directory
+    return "/".join(parts[:-1])
 
 
 def _find_cbc_object(storage, results_path: str) -> str | None:

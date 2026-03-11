@@ -5,13 +5,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.base import get_db
-from app.models.project import Project, Run, RunStatus
+from app.models.project import Run
 from app.services.storage import get_storage_service
+from app.api.v1.dependencies import get_completed_run_with_project
 
 router = APIRouter(
     prefix="/projects/{project_id}/runs/{run_id}/results/convergence",
@@ -21,30 +21,6 @@ router = APIRouter(
 settings = get_settings()
 
 
-async def _get_completed_run(
-    project_id: str, run_id: str, db: AsyncSession
-) -> tuple[Project, Run]:
-    """Get project and completed run or raise 404."""
-    project = (
-        await db.execute(select(Project).where(Project.id == UUID(project_id)))
-    ).scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    run = (
-        await db.execute(
-            select(Run).where(Run.id == UUID(run_id), Run.project_id == UUID(project_id))
-        )
-    ).scalar_one_or_none()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-
-    if run.status != RunStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="Run has not completed")
-
-    return project, run
-
-
 @router.get("/detail")
 async def get_convergence_detail(
     project_id: str,
@@ -52,7 +28,7 @@ async def get_convergence_detail(
     db: AsyncSession = Depends(get_db),
 ):
     """Return detailed convergence data from convergence_detail.json."""
-    _project, run = await _get_completed_run(project_id, run_id, db)
+    run, _project = await get_completed_run_with_project(UUID(project_id), UUID(run_id), db)
 
     if not run.results_path:
         raise HTTPException(status_code=404, detail="No results available")
@@ -77,7 +53,7 @@ async def get_stress_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Return stress data summary from stress_summary.json."""
-    _project, run = await _get_completed_run(project_id, run_id, db)
+    run, _project = await get_completed_run_with_project(UUID(project_id), UUID(run_id), db)
 
     if not run.results_path:
         raise HTTPException(status_code=404, detail="No results available")
@@ -102,7 +78,7 @@ async def get_recommendations(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate refinement recommendations from convergence + stress data."""
-    project, run = await _get_completed_run(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(UUID(project_id), UUID(run_id), db)
 
     if not run.results_path:
         raise HTTPException(status_code=404, detail="No results available")
@@ -150,7 +126,7 @@ async def apply_refinements(
     db: AsyncSession = Depends(get_db),
 ):
     """Apply selected refinements to model files."""
-    project, run = await _get_completed_run(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(UUID(project_id), UUID(run_id), db)
 
     if not project.storage_path:
         raise HTTPException(status_code=400, detail="Project has no model files")
@@ -212,7 +188,7 @@ async def revert_refinements(
     db: AsyncSession = Depends(get_db),
 ):
     """Revert model files from a backup."""
-    project, run = await _get_completed_run(project_id, run_id, db)
+    run, project = await get_completed_run_with_project(UUID(project_id), UUID(run_id), db)
 
     if not project.storage_path:
         raise HTTPException(status_code=400, detail="Project has no model files")

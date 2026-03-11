@@ -27,7 +27,10 @@ RUN mkdir -p /usr/local/bin && \
     cp /tmp/mf6/mf2005 /usr/local/bin/ && \
     cp /tmp/mf6/mfnwt /usr/local/bin/ && \
     cp /tmp/mf6/mfusgdbl /usr/local/bin/mfusg 2>/dev/null || true && \
-    chmod +x /usr/local/bin/mf* && \
+    cp /tmp/mf6/zbud6 /usr/local/bin/ 2>/dev/null || true && \
+    cp /tmp/mf6/zonbud3 /usr/local/bin/ 2>/dev/null || true && \
+    cp /tmp/mf6/zonbudusg /usr/local/bin/ 2>/dev/null || true && \
+    chmod +x /usr/local/bin/mf* /usr/local/bin/z* && \
     rm -rf /tmp/mf6 /tmp/mf6.zip && \
     echo "MODFLOW executables installed"
 

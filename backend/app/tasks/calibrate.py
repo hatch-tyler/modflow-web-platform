@@ -7,14 +7,13 @@ import shutil
 import subprocess
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.base import SessionLocal
@@ -587,7 +586,15 @@ def _run_pest_network_mode(
     return return_code
 
 
-@celery_app.task(bind=True, name="app.tasks.calibrate.run_pest_glm")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.calibrate.run_pest_glm",
+    autoretry_for=(ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    max_retries=2,
+    retry_jitter=True,
+)
 def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
     """
     Execute PEST++ GLM calibration.
@@ -649,7 +656,7 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
 
         # Update run status
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.utcnow()
+        run.started_at = datetime.now(timezone.utc)
         run.celery_task_id = self.request.id
         db.commit()
 
@@ -874,7 +881,7 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
                     # Cancelled
                     run.status = RunStatus.CANCELLED
                     run.error_message = "Cancelled by user"
-                    run.completed_at = datetime.utcnow()
+                    run.completed_at = datetime.now(timezone.utc)
                     db.commit()
                     publish("PEST++ calibration cancelled by user")
                     publish("__STATUS__:cancelled")
@@ -894,7 +901,7 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
                         f"PEST++ failed with return code {return_code}"
                     )
 
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
 
             except Exception as e:
                 _fail_run(db, run, f"Error running PEST++: {e}")
@@ -988,7 +995,15 @@ def run_pest_glm(self, run_id: str, project_id: str, config: dict) -> dict:
             }
 
 
-@celery_app.task(bind=True, name="app.tasks.calibrate.run_pest_ies")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.calibrate.run_pest_ies",
+    autoretry_for=(ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    max_retries=2,
+    retry_jitter=True,
+)
 def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
     """
     Execute PEST++ IES (Iterative Ensemble Smoother) uncertainty analysis.
@@ -1033,7 +1048,7 @@ def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
         )
 
         run.status = RunStatus.RUNNING
-        run.started_at = datetime.utcnow()
+        run.started_at = datetime.now(timezone.utc)
         run.celery_task_id = self.request.id
         db.commit()
 
@@ -1260,7 +1275,7 @@ def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
                     # Cancelled
                     run.status = RunStatus.CANCELLED
                     run.error_message = "Cancelled by user"
-                    run.completed_at = datetime.utcnow()
+                    run.completed_at = datetime.now(timezone.utc)
                     db.commit()
                     publish("PEST++ IES analysis cancelled by user")
                     publish("__STATUS__:cancelled")
@@ -1280,7 +1295,7 @@ def run_pest_ies(self, run_id: str, project_id: str, config: dict) -> dict:
                         f"PEST++ IES failed with return code {return_code}"
                     )
 
-                run.completed_at = datetime.utcnow()
+                run.completed_at = datetime.now(timezone.utc)
 
             except Exception as e:
                 _fail_run(db, run, f"Error running PEST++ IES: {e}")
@@ -1379,7 +1394,7 @@ def _fail_run(db: Session, run: Run, message: str) -> None:
     """Mark a run as failed with an error message."""
     run.status = RunStatus.FAILED
     run.error_message = message
-    run.completed_at = datetime.utcnow()
+    run.completed_at = datetime.now(timezone.utc)
     db.commit()
 
 

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, Play, Pause, SkipForward, SkipBack, Radio } from 'lucide-react'
 import { resultsApi } from '../../services/api'
 import type { LiveResultsSummary } from '../../types'
 import { lengthAbbrev, labelWithUnit } from '../../utils/unitLabels'
+import { useTimestepAnimation } from '../../hooks/useTimestepAnimation'
 
 interface LiveHeadContourChartProps {
   projectId: string
@@ -24,10 +25,15 @@ export default function LiveHeadContourChart({
   const headLabel = labelWithUnit('Head', lengthAbbrev(metadata.length_unit))
 
   const [layer, setLayer] = useState(0)
-  const [selectedIdx, setSelectedIdx] = useState(0)
-  const [playing, setPlaying] = useState(false)
-  const [intervalMs, setIntervalMs] = useState(500)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const {
+    selectedIdx, setSelectedIdx, playing, setPlaying,
+    intervalMs, setIntervalMs, stepForward, stepBack,
+  } = useTimestepAnimation({
+    totalSteps: kstpkperList.length,
+    initialIndex: 'last',
+    resetDeps: [runId],
+    followLatest: true,
+  })
 
   const kstp = kstpkperList[selectedIdx]?.[0] ?? 0
   const kper = kstpkperList[selectedIdx]?.[1] ?? 0
@@ -39,37 +45,6 @@ export default function LiveHeadContourChart({
     enabled: kstpkperList.length > 0,
     staleTime: 5000, // Cache for 5 seconds
   })
-
-  // Auto-select latest timestep when new ones become available
-  useEffect(() => {
-    if (kstpkperList.length > 0 && !playing) {
-      setSelectedIdx(kstpkperList.length - 1)
-    }
-  }, [kstpkperList.length, playing])
-
-  const stepForward = useCallback(() => {
-    setSelectedIdx((prev) => (prev + 1) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  const stepBack = useCallback(() => {
-    setSelectedIdx((prev) => (prev - 1 + kstpkperList.length) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  // Animation loop
-  useEffect(() => {
-    if (playing && kstpkperList.length > 1) {
-      timerRef.current = setInterval(stepForward, intervalMs)
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [playing, intervalMs, stepForward, kstpkperList.length])
-
-  // Stop playing when run changes
-  useEffect(() => {
-    setPlaying(false)
-    setSelectedIdx(Math.max(0, kstpkperList.length - 1))
-  }, [runId])
 
   if (kstpkperList.length === 0) {
     return (

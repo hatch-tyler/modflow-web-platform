@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.models.base import get_db
 from app.models.project import Project
 from app.services.storage import get_storage_service
+from app.api.v1.dependencies import get_project_or_404
 from app.services.grid_cache import (
     get_cached_grid,
     grid_cache_exists,
@@ -39,31 +40,6 @@ from app.services.boundaries import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects/{project_id}", tags=["visualization"])
 settings = get_settings()
-
-
-async def get_project_or_404(
-    project_id: UUID,
-    db: AsyncSession,
-    require_valid: bool = True,
-) -> Project:
-    """Get project by ID or raise 404."""
-    stmt = select(Project).where(Project.id == project_id)
-    result = await db.execute(stmt)
-    project = result.scalar_one_or_none()
-
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-
-    if require_valid and not project.is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project does not have a valid model uploaded",
-        )
-
-    return project
 
 
 @router.get("/grid")
@@ -91,7 +67,7 @@ async def get_grid_mesh(
     """
     import asyncio
 
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         raise HTTPException(
@@ -163,7 +139,7 @@ async def get_grid_info(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Get grid metadata without loading full mesh."""
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     return {
         "nlay": project.nlay,
@@ -203,7 +179,7 @@ async def get_array(
     """
     import asyncio
 
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         raise HTTPException(
@@ -400,7 +376,7 @@ async def list_arrays(
     """
     import asyncio
 
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         return {"arrays": []}
@@ -594,7 +570,7 @@ async def list_boundaries(
     Query params:
     - stress_period: Stress period index (0-based), defaults to 0
     """
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         return {"boundaries": {}, "stress_period": stress_period, "nper": project.nper}
@@ -628,7 +604,7 @@ async def get_boundary_package(
 
     Returns cell locations and values for visualization.
     """
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         raise HTTPException(
@@ -667,7 +643,7 @@ async def regenerate_grid_cache(
     """
     import asyncio
 
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         raise HTTPException(
@@ -721,7 +697,7 @@ async def regenerate_all_caches(
     import asyncio
     from app.services.grid_cache import regenerate_all_from_storage
 
-    project = await get_project_or_404(project_id, db)
+    project = await get_project_or_404(project_id, db, require_valid=True)
 
     if not project.storage_path:
         raise HTTPException(

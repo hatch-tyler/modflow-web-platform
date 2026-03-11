@@ -7,7 +7,7 @@ recommendations, and applies modifications to model files.
 
 import re
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -253,7 +253,7 @@ def apply_refinements(
         Dict with backup_timestamp and modified_files list
     """
     storage = get_storage_service()
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     # Filter recommendations to apply
     to_apply = [r for r in recommendations if r["id"] in refinement_ids and r.get("file_modification")]

@@ -5,6 +5,7 @@ import { Terminal, Play, Square, Loader2, History, CheckCircle, XCircle, Clock, 
 import clsx from 'clsx'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { projectsApi, simulationApi } from '../services/api'
+import { getStatusBadgeClass } from '../utils/statusColors'
 import { useRunManager } from '../store/runManager'
 import type { Run } from '../types'
 
@@ -24,24 +25,6 @@ function getStatusIcon(status: RunStatus) {
       return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
     default:
       return <Clock className="h-4 w-4 text-slate-400" />
-  }
-}
-
-function getStatusColor(status: RunStatus) {
-  switch (status) {
-    case 'completed':
-      return 'bg-green-100 text-green-800'
-    case 'failed':
-      return 'bg-red-100 text-red-800'
-    case 'cancelled':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'running':
-      return 'bg-blue-100 text-blue-800'
-    case 'queued':
-    case 'pending':
-      return 'bg-slate-100 text-slate-800'
-    default:
-      return 'bg-slate-100 text-slate-600'
   }
 }
 
@@ -419,7 +402,7 @@ export default function ConsolePage() {
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className={`px-2 py-0.5 rounded ${getStatusColor(run.status as RunStatus)}`}>
+                    <span className={`px-2 py-0.5 rounded ${getStatusBadgeClass(run.status)}`}>
                       {run.status}
                     </span>
                     {run.exit_code !== null && (

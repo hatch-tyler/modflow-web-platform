@@ -75,11 +75,16 @@ class TestUploadErrorPaths:
             f"/api/v1/projects/{persisted_project.id}/upload",
             files={"file": ("model.zip", zip_buf.getvalue(), "application/zip")},
         )
-        # Should fail during validation — either 500 or a validation error
-        assert response.status_code in (200, 500)
+        # Empty ZIP has no model files — should either fail extraction (500)
+        # or succeed upload but mark model as invalid (200 with is_valid=False)
+        assert response.status_code in (200, 500), (
+            f"Expected 200 or 500, got {response.status_code}: {response.text}"
+        )
         if response.status_code == 200:
             data = response.json()
-            assert data.get("is_valid") is False
+            assert data.get("is_valid") is False, (
+                "Empty ZIP should not be marked as valid"
+            )
 
     @pytest.mark.asyncio
     async def test_upload_zip_with_blocked_files(
@@ -124,8 +129,10 @@ class TestUploadValidation:
         )
         assert response.status_code == 200
         data = response.json()
-        # Project has no storage_path so it's not valid
-        assert data["is_valid"] is True or data["is_valid"] is False
+        # Project with no storage_path returns default is_valid from DB
+        # (True until a failed validation changes it) — verify response shape
+        assert "is_valid" in data
+        assert isinstance(data["is_valid"], bool)
 
 
 class TestRevalidateErrorPaths:

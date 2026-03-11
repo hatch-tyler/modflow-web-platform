@@ -101,6 +101,7 @@ class Run(Base, UUIDMixin, TimestampMixin):
     __table_args__ = (
         Index("idx_runs_project_status", "project_id", "status"),
         Index("idx_runs_project_created", "project_id", "created_at"),
+        Index("idx_runs_completed_at", "completed_at"),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(

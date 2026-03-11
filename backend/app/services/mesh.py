@@ -1,6 +1,7 @@
 """3D mesh generation service for MODFLOW grids."""
 
 import collections
+import logging
 import struct
 import tempfile
 import threading
@@ -10,6 +11,8 @@ from typing import Optional, Union
 
 import flopy
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from app.config import get_settings
 from app.services.path_normalizer import normalize_all_model_files
@@ -80,7 +83,7 @@ def _get_mf6_grid_array(mf_array, shape: Union[int, tuple]) -> np.ndarray:
             return np.array(mf_array.array, dtype=np.float64)
 
     except Exception as e:
-        print(f"Warning extracting array: {e}")
+        logger.warning("extracting array: %s", e)
 
     # Return default array filled with a recognizable default
     if isinstance(shape, int):
@@ -385,12 +388,12 @@ def _load_usg_model(model_dir: Path, nam_file: Path) -> Optional[object]:
                     # Attach grid data to model for later use
                     model._gridspec_data = grid_data
             except Exception as e:
-                print(f"Warning: Could not parse gridspec file: {e}")
+                logger.warning("Could not parse gridspec file: %s", e)
 
         return model
 
     except Exception as e:
-        print(f"Error loading USG model: {e}")
+        logger.warning("loading USG model: %s", e)
         return None
 
 
@@ -462,7 +465,7 @@ def _parse_gridspec(gridspec_file: Path) -> Optional[dict]:
         }
 
     except Exception as e:
-        print(f"Error parsing gridspec: {e}")
+        logger.warning("parsing gridspec: %s", e)
         import traceback
         traceback.print_exc()
         return None
@@ -637,7 +640,7 @@ def _generate_usg_mesh(model) -> Optional[GridMesh]:
         )
 
     except Exception as e:
-        print(f"Error generating USG mesh: {e}")
+        logger.warning("generating USG mesh: %s", e)
         import traceback
         traceback.print_exc()
         return None
@@ -799,7 +802,7 @@ def _generate_mf6_vertex_mesh(model, dis_pkg) -> Optional[GridMesh]:
         )
 
     except Exception as e:
-        print(f"Error generating MF6 vertex mesh: {e}")
+        logger.warning("generating MF6 vertex mesh: %s", e)
         import traceback
         traceback.print_exc()
         return None
@@ -891,7 +894,7 @@ def generate_grid_mesh(model) -> Optional[GridMesh]:
         )
 
     except Exception as e:
-        print(f"Error generating grid mesh: {e}")
+        logger.warning("generating grid mesh: %s", e)
         return None
 
 
@@ -924,7 +927,7 @@ def get_array_data(model, array_name: str) -> Optional[np.ndarray]:
             return _get_mf2005_array(model, array_name)
 
     except Exception as e:
-        print(f"Error getting array {array_name}: {e}")
+        logger.warning("getting array %s: %s", array_name, e)
         return None
 
 
@@ -1262,7 +1265,7 @@ def get_list_package_data(model, package_name: str) -> Optional[dict]:
             return None
 
     except Exception as e:
-        print(f"Error getting list package data {package_name}: {e}")
+        logger.warning("getting list package data %s: %s", package_name, e)
         return None
 
 
@@ -1304,7 +1307,7 @@ def _get_hfb_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                 values = data['hydchr'].astype(float).tolist()
 
         except Exception as e:
-            print(f"Error extracting MF6 HFB data: {e}")
+            logger.warning("extracting MF6 HFB data: %s", e)
             return None
 
     elif is_usg:
@@ -1337,7 +1340,7 @@ def _get_hfb_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                     values = hfb_data[:, -1].astype(float).tolist()
 
         except Exception as e:
-            print(f"Error extracting USG HFB data: {e}")
+            logger.warning("extracting USG HFB data: %s", e)
             return None
 
     else:
@@ -1366,7 +1369,7 @@ def _get_hfb_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                     values = hfb_data[:, 6].astype(float).tolist()
 
         except Exception as e:
-            print(f"Error extracting MF2005 HFB data: {e}")
+            logger.warning("extracting MF2005 HFB data: %s", e)
             return None
 
     if not values:
@@ -1427,7 +1430,7 @@ def _get_sfr_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                     break
 
         except Exception as e:
-            print(f"Error extracting MF6 SFR data: {e}")
+            logger.warning("extracting MF6 SFR data: %s", e)
             return None
 
     else:
@@ -1449,7 +1452,7 @@ def _get_sfr_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                 values = reach_data['strhc1'].astype(float).tolist()
 
         except Exception as e:
-            print(f"Error extracting MF2005 SFR data: {e}")
+            logger.warning("extracting MF2005 SFR data: %s", e)
             return None
 
     if not values:
@@ -1514,7 +1517,7 @@ def _get_ghb_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF6 GHB data: {e}")
+            logger.warning("extracting MF6 GHB data: %s", e)
             return None
     else:
         try:
@@ -1533,7 +1536,7 @@ def _get_ghb_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF2005 GHB data: {e}")
+            logger.warning("extracting MF2005 GHB data: %s", e)
             return None
 
     return _make_list_result(values)
@@ -1565,7 +1568,7 @@ def _get_riv_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF6 RIV data: {e}")
+            logger.warning("extracting MF6 RIV data: %s", e)
             return None
     else:
         try:
@@ -1584,7 +1587,7 @@ def _get_riv_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF2005 RIV data: {e}")
+            logger.warning("extracting MF2005 RIV data: %s", e)
             return None
 
     return _make_list_result(values)
@@ -1616,7 +1619,7 @@ def _get_drn_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF6 DRN data: {e}")
+            logger.warning("extracting MF6 DRN data: %s", e)
             return None
     else:
         try:
@@ -1635,7 +1638,7 @@ def _get_drn_cond_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(data, 'dtype') and 'cond' in data.dtype.names:
                 values = data['cond'].astype(float).tolist()
         except Exception as e:
-            print(f"Error extracting MF2005 DRN data: {e}")
+            logger.warning("extracting MF2005 DRN data: %s", e)
             return None
 
     return _make_list_result(values)
@@ -1673,7 +1676,7 @@ def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                     else:
                         values = np.array(data, dtype=float).flatten().tolist()
         except Exception as e:
-            print(f"Error extracting MF6 RCH data: {e}")
+            logger.warning("extracting MF6 RCH data: %s", e)
             return None
     else:
         try:
@@ -1685,7 +1688,7 @@ def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                 if arr is not None:
                     values = np.array(arr, dtype=float).flatten().tolist()
         except Exception as e:
-            print(f"Error extracting MF2005 RCH data: {e}")
+            logger.warning("extracting MF2005 RCH data: %s", e)
             return None
 
     if not values:
@@ -1737,7 +1740,7 @@ def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                     else:
                         values = np.array(data, dtype=float).flatten().tolist()
         except Exception as e:
-            print(f"Error extracting MF6 EVT data: {e}")
+            logger.warning("extracting MF6 EVT data: %s", e)
             return None
     else:
         try:
@@ -1749,7 +1752,7 @@ def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
                 if arr is not None:
                     values = np.array(arr, dtype=float).flatten().tolist()
         except Exception as e:
-            print(f"Error extracting MF2005 EVT data: {e}")
+            logger.warning("extracting MF2005 EVT data: %s", e)
             return None
 
     if not values:

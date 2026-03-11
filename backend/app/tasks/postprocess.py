@@ -1,6 +1,7 @@
 """Post-processing task definitions for simulation results."""
 
 import json
+import logging
 import re
 import tempfile
 from pathlib import Path
@@ -8,9 +9,7 @@ from typing import Optional
 from uuid import UUID
 
 import numpy as np
-from celery import current_task
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.base import SessionLocal
@@ -18,13 +17,20 @@ from app.models.project import Project, Run, RunStatus
 from app.services.storage import get_storage_service
 from celery_app import celery_app
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 
-# Module-level context for full-mode streaming uploads from _process_heads
-_full_mode_output_prefix: Optional[str] = None
 
-
-@celery_app.task(bind=True, name="app.tasks.postprocess.extract_results")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.postprocess.extract_results",
+    autoretry_for=(ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    max_retries=2,
+    retry_jitter=True,
+)
 def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True) -> dict:
     """
     Extract and process simulation results.
@@ -140,17 +146,13 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
             budget_warning = None
 
             try:
-                global _full_mode_output_prefix
-                if not quick_mode:
-                    _full_mode_output_prefix = run.results_path
                 heads_result = _process_heads(
-                    local_files, model_type, project, quick_mode, None
+                    local_files, model_type, project, quick_mode, None,
+                    output_prefix=run.results_path if not quick_mode else None,
                 )
-                _full_mode_output_prefix = None
                 update_progress(35, 100, "Head data processed", "heads")
             except Exception as e:
-                _full_mode_output_prefix = None
-                print(f"Warning: heads processing failed: {e}")
+                logger.warning("Heads processing failed: %s", e)
                 heads_result = {"summary": {}, "head_arrays": {}}
 
             update_progress(40, 100, "Processing budget data...", "budget")
@@ -161,7 +163,7 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                 )
                 update_progress(70, 100, "Budget data processed", "budget")
             except Exception as e:
-                print(f"Warning: budget processing failed: {e}")
+                logger.warning("Budget processing failed: %s", e)
                 budget_result = {}
                 budget_warning = f"Budget processing failed: {e}"
 
@@ -211,7 +213,7 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                     )
                     completed_stages.append("convergence_detail")
             except Exception as e:
-                print(f"Warning: Detailed convergence parsing failed: {e}")
+                logger.warning("Detailed convergence parsing failed: %s", e)
 
             # --- Stress data extraction ---
             update_progress(74, 100, "Extracting stress period data...", "listing")
@@ -236,7 +238,7 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                         )
                         completed_stages.append("stress_summary")
             except Exception as e:
-                print(f"Warning: Stress extraction failed: {e}")
+                logger.warning("Stress extraction failed: %s", e)
 
             # Fallback: if listing file had no percent discrepancy lines but we
             # have budget data, compute mass balance error from CBC periods.
@@ -270,7 +272,7 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
                 from app.services.hds_streaming import build_hds_index
                 build_hds_index(project_id, run_id, run.results_path)
             except Exception as e:
-                print(f"Warning: Could not pre-build HDS index: {e}")
+                logger.warning("Could not pre-build HDS index: %s", e)
 
             update_progress(80, 100, "Uploading processed results...", "uploading")
 
@@ -384,7 +386,8 @@ def extract_results(self, run_id: str, project_id: str, quick_mode: bool = True)
 
 def _process_heads(
     local_files: dict, model_type: str, project: Project,
-    quick_mode: bool = False, progress_callback=None
+    quick_mode: bool = False, progress_callback=None,
+    output_prefix: Optional[str] = None,
 ) -> dict:
     """
     Process binary head file using FloPy.
@@ -553,10 +556,10 @@ def _process_heads(
             }
 
             # Upload immediately and discard — don't accumulate in memory
-            if _full_mode_output_prefix:
+            if output_prefix:
                 slice_json = json.dumps(slice_data, default=_json_serialize)
                 obj_name = (
-                    f"{_full_mode_output_prefix}/processed/"
+                    f"{output_prefix}/processed/"
                     f"heads_L{layer_idx}_SP{kper}_TS{kstp}.json"
                 )
                 storage.upload_bytes(
@@ -897,7 +900,7 @@ def _extract_grid_geometry(
             grb = MfGrdFile(str(grb_path))
             grid = grb.modelgrid
         except Exception as e:
-            print(f"Warning: Could not load .grb file: {e}")
+            logger.warning("Could not load .grb file: %s", e)
 
     # Fall back to loading full model from storage
     if grid is None and project.storage_path:
@@ -909,7 +912,7 @@ def _extract_grid_geometry(
             if model is not None:
                 grid = model.modelgrid
         except Exception as e:
-            print(f"Warning: Could not load model for grid geometry: {e}")
+            logger.warning("Could not load model for grid geometry: %s", e)
 
     if grid is None:
         return
@@ -934,7 +937,7 @@ def _extract_grid_geometry(
             cell_polys = _get_cell_polys_from_gridspec(model, ncpl_val)
 
         if cell_polys is None:
-            print("Warning: No cell polygon data available for grid geometry")
+            logger.warning("No cell polygon data available for grid geometry")
             return
 
         # Compute extent from polygon data
@@ -967,9 +970,7 @@ def _extract_grid_geometry(
             content_type="application/json",
         )
     except Exception as e:
-        print(f"Warning: Grid geometry extraction failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.warning("Grid geometry extraction failed: %s", e, exc_info=True)
 
 
 def _get_cell_polys_from_grid(grid, ncpl_val: int):

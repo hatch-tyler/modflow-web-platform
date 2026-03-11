@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { memo, useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, Play, Pause, SkipForward, SkipBack } from 'lucide-react'
@@ -7,6 +7,7 @@ import type { ResultsSummary, PostProcessProgress } from '../../types'
 import ExportButton from './ExportButton'
 import AwaitingData from './AwaitingData'
 import { lengthAbbrev, labelWithUnit } from '../../utils/unitLabels'
+import { useTimestepAnimation } from '../../hooks/useTimestepAnimation'
 
 const NUM_COLOR_BINS = 25
 
@@ -40,10 +41,14 @@ function DrawdownChart({ projectId, runId, summary, expanded = false, awaitingPr
   const ddLabel = labelWithUnit('Drawdown', lu)
 
   const [layer, setLayer] = useState(0)
-  const [selectedIdx, setSelectedIdx] = useState(kstpkperList.length > 1 ? kstpkperList.length - 1 : 0)
-  const [playing, setPlaying] = useState(false)
-  const [intervalMs, setIntervalMs] = useState(500)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const {
+    selectedIdx, setSelectedIdx, playing, setPlaying,
+    intervalMs, setIntervalMs, stepForward, stepBack,
+  } = useTimestepAnimation({
+    totalSteps: kstpkperList.length,
+    initialIndex: 'last',
+    resetDeps: [runId, layer, kstpkperList.length],
+  })
 
   const kstp = kstpkperList[selectedIdx]?.[0] ?? 0
   const kper = kstpkperList[selectedIdx]?.[1] ?? 0
@@ -273,28 +278,7 @@ function DrawdownChart({ projectId, runId, summary, expanded = false, awaitingPr
     return traces
   }, [isPolygonGrid, gridGeometry, drawdownData, drawdownRange, layer])
 
-  const stepForward = useCallback(() => {
-    setSelectedIdx(prev => (prev + 1) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  const stepBack = useCallback(() => {
-    setSelectedIdx(prev => (prev - 1 + kstpkperList.length) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  // Animation loop
-  useEffect(() => {
-    if (playing && kstpkperList.length > 1) {
-      timerRef.current = setInterval(stepForward, intervalMs)
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [playing, intervalMs, stepForward, kstpkperList.length])
-
-  useEffect(() => {
-    setPlaying(false)
-    setSelectedIdx(kstpkperList.length > 1 ? kstpkperList.length - 1 : 0)
-  }, [runId, layer, kstpkperList.length])
+  // Animation handled by useTimestepAnimation hook
 
   if (kstpkperList.length === 0) {
     return (

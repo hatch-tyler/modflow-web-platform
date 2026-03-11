@@ -42,10 +42,15 @@ def _call_task(task, mock_self, *args):
     """Call a Celery bind=True task's underlying function directly.
 
     Bypasses Celery's Task.__call__ which auto-injects self via descriptor
-    protocol. Extracts the unbound function via __func__ on the bound method.
+    protocol. Handles both plain bound methods and autoretry-wrapped tasks.
     """
-    raw_fn = task.run.__func__
-    return raw_fn(mock_self, *args)
+    run_attr = task.run
+    if hasattr(run_attr, '__func__'):
+        # Plain bound method — inject mock_self explicitly
+        return run_attr.__func__(mock_self, *args)
+    # autoretry-wrapped: task.run is a closure that calls task._orig_run(*args)
+    # which is already bound, so just pass the positional args (no mock_self)
+    return run_attr(*args)
 
 
 class TestSimulationIdempotencyGuard:

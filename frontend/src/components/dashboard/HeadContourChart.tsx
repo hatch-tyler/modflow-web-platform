@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { memo, useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Plot from 'react-plotly.js'
 import { Loader2, Play, Pause, SkipForward, SkipBack, Map as MapIcon, Grid3X3 } from 'lucide-react'
@@ -10,6 +10,7 @@ import ExportButton from './ExportButton'
 import AwaitingData from './AwaitingData'
 import { lengthAbbrev, labelWithUnit } from '../../utils/unitLabels'
 import { viridisColor, DIFF_COLORSCALE } from '../../utils/colorScales'
+import { useTimestepAnimation } from '../../hooks/useTimestepAnimation'
 
 const NUM_COLOR_BINS = 25
 
@@ -36,11 +37,15 @@ function HeadContourChart({ projectId, runId, summary, expanded = false, compare
   const headLabel = labelWithUnit('Head', lu)
 
   const [layer, setLayer] = useState(0)
-  const [selectedIdx, setSelectedIdx] = useState(0)
-  const [playing, setPlaying] = useState(false)
-  const [intervalMs, setIntervalMs] = useState(500)
   const [showMapView, setShowMapView] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const {
+    selectedIdx, setSelectedIdx, playing, setPlaying,
+    intervalMs, setIntervalMs, stepForward, stepBack,
+  } = useTimestepAnimation({
+    totalSteps: kstpkperList.length,
+    initialIndex: 'first',
+    resetDeps: [runId, layer],
+  })
 
   const kstp = kstpkperList[selectedIdx]?.[0] ?? 0
   const kper = kstpkperList[selectedIdx]?.[1] ?? 0
@@ -427,29 +432,7 @@ function HeadContourChart({ projectId, runId, summary, expanded = false, compare
     return traces
   }, [isPolygonGrid, gridGeometry, headSlice, layer, heads_summary.min_head, heads_summary.max_head])
 
-  const stepForward = useCallback(() => {
-    setSelectedIdx(prev => (prev + 1) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  const stepBack = useCallback(() => {
-    setSelectedIdx(prev => (prev - 1 + kstpkperList.length) % kstpkperList.length)
-  }, [kstpkperList.length])
-
-  // Animation loop
-  useEffect(() => {
-    if (playing && kstpkperList.length > 1) {
-      timerRef.current = setInterval(stepForward, intervalMs)
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [playing, intervalMs, stepForward, kstpkperList.length])
-
-  // Stop playing when run/layer changes
-  useEffect(() => {
-    setPlaying(false)
-    setSelectedIdx(0)
-  }, [runId, layer])
+  // Animation handled by useTimestepAnimation hook
 
   if (kstpkperList.length === 0) {
     return (

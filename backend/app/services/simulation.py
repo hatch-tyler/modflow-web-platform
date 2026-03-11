@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import AsyncGenerator, Callable, Optional
@@ -171,7 +171,7 @@ async def run_simulation(
 
         # Run simulation
         result.status = SimulationStatus.RUNNING
-        result.started_at = datetime.utcnow()
+        result.started_at = datetime.now(timezone.utc)
 
         if on_output:
             on_output(f"Starting {model_type.upper()} simulation...")
@@ -202,7 +202,7 @@ async def run_simulation(
             # Wait for completion
             return_code = await process.wait()
             result.return_code = return_code
-            result.finished_at = datetime.utcnow()
+            result.finished_at = datetime.now(timezone.utc)
 
             if return_code == 0:
                 result.status = SimulationStatus.COMPLETED
@@ -236,7 +236,7 @@ async def run_simulation(
 
         except asyncio.CancelledError:
             result.status = SimulationStatus.CANCELLED
-            result.finished_at = datetime.utcnow()
+            result.finished_at = datetime.now(timezone.utc)
             result.error_message = "Simulation was cancelled"
             if on_output:
                 on_output("Simulation cancelled by user")
@@ -244,7 +244,7 @@ async def run_simulation(
 
         except Exception as e:
             result.status = SimulationStatus.FAILED
-            result.finished_at = datetime.utcnow()
+            result.finished_at = datetime.now(timezone.utc)
             result.error_message = str(e)
             if on_output:
                 on_output(f"Error: {str(e)}")

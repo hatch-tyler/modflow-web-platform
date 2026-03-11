@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3, Loader2, GitCompareArrows, PlayCircle, Clock, RefreshCw, Radio, CheckCircle2 } from 'lucide-react'
 import { projectsApi, simulationApi, resultsApi } from '../services/api'
+import { getStatusCardClass } from '../utils/statusColors'
 import type { Run, PostProcessProgress, PostProcessStage } from '../types'
 import RunSelector from '../components/dashboard/RunSelector'
 import StatCards from '../components/dashboard/StatCards'
@@ -38,17 +39,6 @@ function formatDuration(startTime: string): string {
     return `${diffHours}h ${mins}m`
   }
   return `${diffMins}m`
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'running': return 'text-blue-600 bg-blue-50 border-blue-200'
-    case 'pending':
-    case 'queued': return 'text-yellow-600 bg-yellow-50 border-yellow-200'
-    case 'completed': return 'text-green-600 bg-green-50 border-green-200'
-    case 'failed': return 'text-red-600 bg-red-50 border-red-200'
-    default: return 'text-slate-600 bg-slate-50 border-slate-200'
-  }
 }
 
 const POLLING_OPTIONS = [
@@ -213,7 +203,7 @@ function ActiveRunStatus({ run, projectId, isPostProcessing, pollingInterval, on
   const isPending = ['pending', 'queued'].includes(run.status)
 
   return (
-    <div className={`border rounded-lg p-4 ${getStatusColor(run.status)}`}>
+    <div className={`border rounded-lg p-4 ${getStatusCardClass(run.status)}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {isRunning || isPostProcessing ? (
