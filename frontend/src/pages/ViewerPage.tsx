@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, Layers, Loader2, Eye, EyeOff, Droplets, ArrowDownCircle, Waves, Scissors, X } from 'lucide-react'
+import { Box, Layers, Loader2, Eye, EyeOff, Droplets, ArrowDownCircle, Waves, Scissors, X, Camera } from 'lucide-react'
 import { projectsApi } from '../services/api'
 import GridViewer from '../components/viewer3d/GridViewer'
 import CrossSectionPanel from '../components/viewer3d/CrossSectionPanel'
@@ -113,6 +113,7 @@ export default function ViewerPage() {
   const [crossSectionLine, setCrossSectionLine] = useState<[number, number][]>([])
   const [crossSectionSide, setCrossSectionSide] = useState<'left' | 'right' | 'both'>('both')
   const [isDrawingCrossSection, setIsDrawingCrossSection] = useState(false)
+  const [takeScreenshot, setTakeScreenshot] = useState<(() => void) | null>(null)
 
   // Fetch project info
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -615,6 +616,7 @@ export default function ViewerPage() {
                 verticalExaggeration={verticalExaggeration}
                 showWireframe={showWireframe}
                 cellMask={cellMask}
+                onScreenshotReady={(fn) => setTakeScreenshot(() => fn)}
               />
             </Suspense>
           ) : null}
@@ -631,6 +633,18 @@ export default function ViewerPage() {
           <div className="absolute bottom-4 left-4 text-slate-500 text-xs bg-slate-800/80 px-3 py-2 rounded">
             <span className="font-medium">Controls:</span> Drag to rotate • Scroll to zoom • Right-drag to pan
           </div>
+
+          {/* Screenshot button */}
+          {takeScreenshot && (
+            <button
+              onClick={takeScreenshot}
+              className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-300 hover:text-white px-3 py-2 rounded text-xs transition-colors shadow-lg"
+              title="Save screenshot as PNG"
+            >
+              <Camera className="h-4 w-4" />
+              Screenshot
+            </button>
+          )}
         </div>
       </div>
     </div>

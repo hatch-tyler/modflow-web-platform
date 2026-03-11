@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { useMemo, useEffect, useCallback } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { GridMeshData, ArrayData } from '../../utils/binaryParser'
@@ -18,6 +18,48 @@ interface GridViewerProps {
   verticalExaggeration?: number
   showWireframe?: boolean
   cellMask?: Uint8Array
+  onScreenshotReady?: (takeScreenshot: () => void) => void
+}
+
+function ScreenshotHelper({ onReady }: { onReady?: (takeScreenshot: () => void) => void }) {
+  const { gl, scene, camera } = useThree()
+
+  const takeScreenshot = useCallback(() => {
+    // Hide helpers (GridHelper, AxesHelper)
+    const hidden: THREE.Object3D[] = []
+    scene.traverse((obj) => {
+      if ((obj instanceof THREE.GridHelper || obj instanceof THREE.AxesHelper) && obj.visible) {
+        obj.visible = false
+        hidden.push(obj)
+      }
+    })
+
+    // Save clear color/alpha, set transparent background
+    const prevClearColor = new THREE.Color()
+    gl.getClearColor(prevClearColor)
+    const prevClearAlpha = gl.getClearAlpha()
+    gl.setClearColor(0x000000, 0)
+
+    // Render and capture
+    gl.render(scene, camera)
+    const dataUrl = gl.domElement.toDataURL('image/png')
+
+    // Restore
+    gl.setClearColor(prevClearColor, prevClearAlpha)
+    hidden.forEach((obj) => { obj.visible = true })
+
+    // Trigger download
+    const link = document.createElement('a')
+    link.download = `model-screenshot-${Date.now()}.png`
+    link.href = dataUrl
+    link.click()
+  }, [gl, scene, camera])
+
+  useEffect(() => {
+    onReady?.(takeScreenshot)
+  }, [onReady, takeScreenshot])
+
+  return null
 }
 
 export default function GridViewer({
@@ -32,6 +74,7 @@ export default function GridViewer({
   verticalExaggeration = 10,
   showWireframe = true,
   cellMask,
+  onScreenshotReady,
 }: GridViewerProps) {
   const { nlay, nrow, ncol } = gridData
 
@@ -551,6 +594,8 @@ export default function GridViewer({
         position={[cameraSetup.target[0], cameraSetup.target[1], gridHelperZ]}
         rotation={[Math.PI / 2, 0, 0]}
       />
+
+      <ScreenshotHelper onReady={onScreenshotReady} />
     </Canvas>
   )
 }
