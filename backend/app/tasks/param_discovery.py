@@ -6,6 +6,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from app.config import get_settings
 from app.services.redis_manager import get_sync_client
 from app.services.storage import get_storage_service
@@ -34,7 +36,12 @@ def _update_progress(
     redis_client.expire(key, _PROGRESS_TTL)
 
 
-@celery_app.task(bind=True, name="app.tasks.param_discovery.discover_parameters_task")
+@celery_app.task(
+    bind=True,
+    name="app.tasks.param_discovery.discover_parameters_task",
+    soft_time_limit=300,
+    time_limit=360,
+)
 def discover_parameters_task(
     self,
     task_id: str,
@@ -85,8 +92,11 @@ def discover_parameters_task(
 
             _update_progress(rc, task_id, "loading", 50, "Loading model...")
 
+            def _progress_cb(pct: int, msg: str):
+                _update_progress(rc, task_id, "scanning", pct, msg)
+
             from app.services.pest_setup import discover_parameters
-            params = discover_parameters(model_dir)
+            params = discover_parameters(model_dir, progress_callback=_progress_cb)
 
         _update_progress(rc, task_id, "caching", 90, "Saving results...")
 
@@ -115,6 +125,15 @@ def discover_parameters_task(
             task_id, project_id, len(params),
         )
 
+    except SoftTimeLimitExceeded:
+        logger.error(
+            "Parameter discovery task %s timed out for project %s", task_id, project_id,
+        )
+        _update_progress(
+            rc, task_id, "failed", 0, "",
+            error="Parameter scan timed out after 5 minutes. The model may be too large.",
+        )
+        rc.delete(active_key)
     except Exception as e:
         logger.exception("Parameter discovery task %s failed: %s", task_id, e)
         _update_progress(rc, task_id, "failed", 0, "", error=str(e))

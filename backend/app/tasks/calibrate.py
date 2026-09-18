@@ -14,6 +14,7 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.base import SessionLocal

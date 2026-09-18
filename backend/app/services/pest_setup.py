@@ -8,7 +8,7 @@ import json
 import re
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -141,7 +141,10 @@ LIST_PARAM_PROPERTIES = [
 ]
 
 
-def discover_parameters(model_dir: Path) -> list[dict]:
+def discover_parameters(
+    model_dir: Path,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+) -> list[dict]:
     """
     Discover adjustable parameters from a MODFLOW model.
 
@@ -151,14 +154,20 @@ def discover_parameters(model_dir: Path) -> list[dict]:
 
     Args:
         model_dir: Directory containing model files.
+        progress_callback: Optional (percent, message) callback for progress updates.
 
     Returns:
         List of parameter descriptors with package_type indicator.
     """
+    def _progress(pct: int, msg: str):
+        if progress_callback is not None:
+            progress_callback(pct, msg)
+
     model = load_model_from_directory(model_dir)
     if model is None:
         return []
 
+    _progress(55, "Model loaded, scanning array properties...")
     params = []
 
     # Discover array-based parameters (per-layer)
@@ -196,8 +205,11 @@ def discover_parameters(model_dir: Path) -> list[dict]:
                 }
             )
 
+    _progress(70, "Scanning list-based packages...")
+
     # Discover list-based parameters (single multiplier for whole package)
-    for prop_def in LIST_PARAM_PROPERTIES:
+    n_list = len(LIST_PARAM_PROPERTIES)
+    for i, prop_def in enumerate(LIST_PARAM_PROPERTIES):
         pkg_data = get_list_package_data(model, prop_def["array_key"])
         if pkg_data is None:
             continue
@@ -216,6 +228,7 @@ def discover_parameters(model_dir: Path) -> list[dict]:
                 "suggested_upper": prop_def["default_upper"],
             }
         )
+        _progress(70 + int(15 * (i + 1) / n_list), f"Scanned {prop_def['short']}...")
 
     return params
 

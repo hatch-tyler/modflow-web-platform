@@ -1661,9 +1661,9 @@ def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if rch is None:
                 return None
             if hasattr(rch, 'recharge'):
-                data = rch.recharge.get_data()
+                data = rch.recharge.get_data(0)
                 if data is not None:
-                    # MF6 get_data() may return a dict keyed by layer
+                    # MF6 get_data(0) may return a dict keyed by layer
                     if isinstance(data, dict):
                         all_vals = []
                         for key in sorted(data.keys()):
@@ -1725,9 +1725,9 @@ def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if evt is None:
                 return None
             if hasattr(evt, 'rate'):
-                data = evt.rate.get_data()
+                data = evt.rate.get_data(0)
                 if data is not None:
-                    # MF6 get_data() may return a dict keyed by layer
+                    # MF6 get_data(0) may return a dict keyed by layer
                     if isinstance(data, dict):
                         all_vals = []
                         for key in sorted(data.keys()):
