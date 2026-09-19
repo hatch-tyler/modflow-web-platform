@@ -1663,7 +1663,8 @@ def _get_rch_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(rch, 'recharge'):
                 data = rch.recharge.get_data(0)
                 if data is not None:
-                    # MF6 get_data(0) may return a dict keyed by layer
+                    # Defensive: get_data(0) returns one period's array, but keep the
+                    # dict branch in case FloPy hands back a period-keyed dict
                     if isinstance(data, dict):
                         all_vals = []
                         for key in sorted(data.keys()):
@@ -1727,7 +1728,8 @@ def _get_evt_data(model, is_mf6: bool, is_usg: bool) -> Optional[dict]:
             if hasattr(evt, 'rate'):
                 data = evt.rate.get_data(0)
                 if data is not None:
-                    # MF6 get_data(0) may return a dict keyed by layer
+                    # Defensive: get_data(0) returns one period's array, but keep the
+                    # dict branch in case FloPy hands back a period-keyed dict
                     if isinstance(data, dict):
                         all_vals = []
                         for key in sorted(data.keys()):

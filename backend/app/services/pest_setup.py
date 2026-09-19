@@ -964,6 +964,29 @@ def _set_drn_cond_multiplier(model, model_type, mult):
         print(f"Warning: Could not set DRN multiplier: {e}")
 
 
+def _scale_mf6_array(data, mult):
+    """Scale an MF6 array value that may be transient.
+
+    FloPy's MFTransientArray.get_data() returns a dict keyed by STRESS
+    PERIOD (not by layer). Feeding that dict straight to np.array() yields a
+    0-d object array, and multiplying it raises
+    "TypeError: unsupported operand type(s) for *: 'dict' and 'float'".
+    Because the callers wrap everything in a broad except, that surfaced only
+    as a printed warning and the multiplier was silently dropped — PEST then
+    saw the parameter as completely insensitive.
+
+    Scale every stress period, matching the MF2005 branches which already
+    loop over all periods.
+    """
+    if isinstance(data, dict):
+        return {
+            kper: np.array(arr, dtype=float) * mult
+            for kper, arr in data.items()
+            if arr is not None
+        }
+    return np.array(data, dtype=float) * mult
+
+
 def _set_rch_multiplier(model, model_type, mult):
     """Multiply Recharge rate array."""
     try:
@@ -976,7 +999,7 @@ def _set_rch_multiplier(model, model_type, mult):
             if hasattr(rch, 'recharge'):
                 data = rch.recharge.get_data()
                 if data is not None:
-                    rch.recharge.set_data(np.array(data) * mult)
+                    rch.recharge.set_data(_scale_mf6_array(data, mult))
         else:
             rch = getattr(model, 'rch', None)
             if rch is None:
@@ -1002,7 +1025,7 @@ def _set_evt_multiplier(model, model_type, mult):
             if hasattr(evt, 'rate'):
                 data = evt.rate.get_data()
                 if data is not None:
-                    evt.rate.set_data(np.array(data) * mult)
+                    evt.rate.set_data(_scale_mf6_array(data, mult))
         else:
             evt = getattr(model, 'evt', None)
             if evt is None:

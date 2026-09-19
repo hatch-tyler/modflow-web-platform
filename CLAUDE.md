@@ -214,7 +214,7 @@ Key variables in `.env` (see `.env.example`): POSTGRES_USER/PASSWORD/DB, REDIS_P
 - `gwf.get_package("DIS")` returns whatever discretization package exists (DIS, DISV, or DISU) — always check `getattr(pkg, 'package_type', '').upper()` before accessing type-specific attributes
 - FloPy uses **lazy loading** for MF6 OPEN/CLOSE external arrays — `get_data()` reads the file at call time, so model files must remain on disk. If you delete the temp directory before accessing array data, values will be missing
 - DISV arrays from FloPy have shape `(nlay, ncpl)` not `(nlay, 1, ncpl)` — must reshape when checking against `(nlay, nrow, ncol)` with `nrow=1`
-- MF6 `get_data()` on RCHA/EVTA packages returns a `dict` keyed by layer (e.g. `{0: array}`), not a flat array — must check `isinstance(data, dict)` and iterate
+- MF6 `get_data()` on RCHA/EVTA returns a `dict` keyed by **stress period**, not by layer (`{0: arr_sp0, 1: arr_sp1, ...}`). A single-stress-period model yields `{0: array}`, which makes the two indistinguishable — verify against a multi-period model. Pass an explicit `get_data(0)` when you want one period's array; iterating the dict blindly concatenates every stress period, so summary stats become a range over *time* rather than space. When writing values back, scale each period and `set_data()` the dict — `np.array(dict) * x` raises `TypeError` and, under a broad `except`, silently drops the update.
 
 ### MinIO Download Safety
 - **NEVER** use `storage.download_file()` for large binary files (HDS, CBC) — loads entire file into memory, OOMs the API container
