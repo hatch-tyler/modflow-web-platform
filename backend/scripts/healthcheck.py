@@ -13,6 +13,38 @@ import os
 import signal
 import sys
 
+# The API health check can SIGTERM PID 1 to force a container restart when the
+# uvicorn worker is gone. That is a blunt instrument, so it must not fire on a
+# single sample. State lives in /tmp (container-local, cleared on restart), so
+# strikes naturally reset when the container comes back.
+_STRIKE_FILE = "/tmp/.healthcheck_api_strikes"
+_STRIKES_BEFORE_KILL = 3
+
+
+def _bump_strikes() -> int:
+    """Increment and return the consecutive-failure count."""
+    try:
+        with open(_STRIKE_FILE, "r") as f:
+            count = int(f.read().strip() or 0)
+    except Exception:
+        count = 0
+    count += 1
+    try:
+        with open(_STRIKE_FILE, "w") as f:
+            f.write(str(count))
+    except Exception:
+        # If we cannot persist state, fail safe: never reach the kill
+        # threshold on the basis of a count we could not record.
+        return 1
+    return count
+
+
+def _reset_strikes() -> None:
+    try:
+        os.remove(_STRIKE_FILE)
+    except Exception:
+        pass
+
 
 def check_api() -> bool:
     """Check if the FastAPI server is responding.
@@ -91,17 +123,36 @@ def check_api() -> bool:
                     system_uptime = float(uf.read().split()[0])
                 proc_uptime = system_uptime - (start_jiffies / hz)
                 if proc_uptime >= 30:
+                    # Require the condition to PERSIST before killing PID 1.
+                    # A single bad sample is not proof of a dead worker: the
+                    # reloader briefly runs one process while respawning. Only
+                    # a sustained shortage means the worker is really gone.
+                    strikes = _bump_strikes()
+                    if strikes < _STRIKES_BEFORE_KILL:
+                        print(
+                            f"Uvicorn worker may be dead "
+                            f"(live_workers={live_workers}, zombie={has_zombie}, "
+                            f"strike {strikes}/{_STRIKES_BEFORE_KILL}). "
+                            f"Not restarting yet.",
+                            file=sys.stderr,
+                        )
+                        return False
                     print(
                         f"Uvicorn worker is dead (live_workers={live_workers}, "
-                        f"zombie={has_zombie}, uptime={proc_uptime:.0f}s). "
+                        f"zombie={has_zombie}, uptime={proc_uptime:.0f}s, "
+                        f"{strikes} consecutive strikes). "
                         f"Sending SIGTERM to trigger container restart.",
                         file=sys.stderr,
                     )
+                    _reset_strikes()
                     os.kill(1, signal.SIGTERM)
                     return False
             except Exception:
                 # Can't read proc uptime, fall through to HTTP check
                 pass
+        else:
+            # Healthy process count — clear any accumulated strikes.
+            _reset_strikes()
     except Exception:
         pass  # If /proc inspection fails, fall through to HTTP check
 
@@ -116,31 +167,49 @@ def check_api() -> bool:
 
 
 def check_worker() -> bool:
-    """Check if the Celery worker is running and can process tasks."""
+    """Check that the Celery worker in THIS container is accepting work.
+
+    This is the real liveness probe. It asks the worker itself to respond to
+    a control-plane ping, which the MainProcess consumer answers even while a
+    prefork child is busy running a multi-hour MODFLOW simulation.
+
+    It deliberately does NOT fall back to "broker is reachable" as a success
+    condition. That fallback made the check report healthy whenever Redis was
+    up — including when the Celery process was dead or wedged — which is the
+    exact state the health check exists to catch.
+    """
+    import socket
+
     try:
         from celery_app import celery_app
 
-        # Ping the worker - this checks if it's connected to the broker
-        # and can respond to control commands
-        inspect = celery_app.control.inspect()
+        host = socket.gethostname()
+        response = celery_app.control.inspect(timeout=5.0).ping() or {}
 
-        # Get active queues - if we get any response, worker is alive
-        ping_response = inspect.ping()
+        # Require a response from THIS container's worker. Accepting any
+        # responder would let a sibling worker (or a PEST agent sharing the
+        # broker) mask a local failure — the same blind spot as the old
+        # Redis-only check, one layer up. Match on hostname rather than an
+        # exact "celery@<host>" so an explicit -n prefix still resolves.
+        mine = [n for n in response if n.endswith(f"@{host}") or host in n]
 
-        if ping_response:
-            print(f"Worker responding: {list(ping_response.keys())}")
+        if mine:
+            print(f"Worker responding: {mine}")
             return True
+
+        if response:
+            print(
+                f"Other workers responded {list(response)} but not this "
+                f"container ({host}) — local worker is not accepting work.",
+                file=sys.stderr,
+            )
         else:
-            # No workers responded - check if broker is at least reachable
-            try:
-                with celery_app.connection_or_acquire() as conn:
-                    conn.ensure_connection(max_retries=1)
-                print("Broker reachable but no workers responding yet")
-                # Return True if broker is reachable - worker might still be starting
-                return True
-            except Exception as e:
-                print(f"Broker not reachable: {e}", file=sys.stderr)
-                return False
+            print(
+                f"No Celery worker responded to ping (expected host {host}). "
+                f"Broker may be up, but this worker is not accepting work.",
+                file=sys.stderr,
+            )
+        return False
 
     except Exception as e:
         print(f"Worker health check failed: {e}", file=sys.stderr)
@@ -212,8 +281,10 @@ def main():
     if mode == "api":
         success = check_api()
     elif mode == "worker":
-        # Use simple check (Redis connectivity) for faster response
-        success = check_worker_simple()
+        # Ping the Celery worker itself. check_worker_simple() (Redis-only) is
+        # kept below as a diagnostic helper but is NOT the health check: it
+        # cannot distinguish "worker alive" from "worker dead, Redis fine".
+        success = check_worker()
     else:
         print(f"Unknown mode: {mode}", file=sys.stderr)
         sys.exit(1)
